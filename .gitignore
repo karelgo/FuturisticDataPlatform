@@ -1,0 +1,41 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.astro/
+
+# Terraform / IaC
+.terraform/
+*.tfstate
+*.tfstate.backup
+crash.log
+
+# Secrets — never commit
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# Data / build artifacts
+*.parquet
+*.duckdb
+target/
+logs/
