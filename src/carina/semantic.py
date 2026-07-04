@@ -17,6 +17,7 @@ import yaml
 
 from . import evidence
 from .contracts import Product
+from .lanes import LaneRouter
 
 
 @dataclass
@@ -80,6 +81,7 @@ def query_metric(
     dimension: str | None = None,
     since: str | None = None,
     actor: str = "portal.ui",
+    router: LaneRouter | None = None,
 ) -> dict:
     if metric_id not in metrics:
         raise KeyError(f"Unknown metric: {metric_id}")
@@ -101,7 +103,8 @@ def query_metric(
         params.append(since)
     sql += f" ORDER BY {model.time_column}" + (", dim" if dim_col else "")
 
-    rows = con.execute(sql, params).fetchall()
+    router = router or LaneRouter(con)
+    rows, decision = router.execute(sql, params, tables=[model.table])
 
     if dim_col:
         series: dict[str, list] = {}
@@ -113,6 +116,7 @@ def query_metric(
 
     evidence.record(con, "semantic.query", metric_id, {
         "dimension": dimension, "since": since, "rows": len(rows), "actor": actor,
+        "routing": decision.as_dict(),
     }, actor=actor)
 
     freshness = evidence.latest(con, "ingest.fetch_info")
@@ -128,7 +132,8 @@ def query_metric(
             "table": model.table,
             "sql": sql,
             "contracts": model.contracts,
-            "lane": "duckdb-local",
+            "lane": decision.lane,
+            "routing": decision.as_dict(),
             "evidence_head": evidence.head(con),
             "source_refreshed": (freshness or {}).get("ts"),
         },

@@ -18,7 +18,7 @@ import duckdb
 GENESIS = "0" * 64
 
 DDL = """
-CREATE TABLE IF NOT EXISTS evidence (
+CREATE TABLE IF NOT EXISTS main.evidence (
     seq          BIGINT PRIMARY KEY,
     ts           TIMESTAMP NOT NULL,
     actor        VARCHAR NOT NULL,
@@ -50,7 +50,7 @@ def record(
     """Append one evidence record; returns its chain hash."""
     init(con)
     row = con.execute(
-        "SELECT seq, chain_hash FROM evidence ORDER BY seq DESC LIMIT 1"
+        "SELECT seq, chain_hash FROM main.evidence ORDER BY seq DESC LIMIT 1"
     ).fetchone()
     seq = (row[0] + 1) if row else 1
     prev_hash = row[1] if row else GENESIS
@@ -61,7 +61,7 @@ def record(
         f"{seq}|{ts.isoformat()}|{actor}|{action}|{subject}|{payload_hash}|{prev_hash}"
     )
     con.execute(
-        "INSERT INTO evidence VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO main.evidence VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [seq, ts, actor, action, subject, payload_json, payload_hash, prev_hash, chain_hash],
     )
     return chain_hash
@@ -72,7 +72,7 @@ def verify(con: duckdb.DuckDBPyConnection) -> dict:
     init(con)
     rows = con.execute(
         "SELECT seq, ts, actor, action, subject, payload, payload_hash, prev_hash, chain_hash"
-        " FROM evidence ORDER BY seq"
+        " FROM main.evidence ORDER BY seq"
     ).fetchall()
     prev = GENESIS
     for seq, ts, actor, action, subject, payload, payload_hash, prev_hash, chain_hash in rows:
@@ -90,14 +90,14 @@ def verify(con: duckdb.DuckDBPyConnection) -> dict:
 
 def head(con: duckdb.DuckDBPyConnection) -> str | None:
     init(con)
-    row = con.execute("SELECT chain_hash FROM evidence ORDER BY seq DESC LIMIT 1").fetchone()
+    row = con.execute("SELECT chain_hash FROM main.evidence ORDER BY seq DESC LIMIT 1").fetchone()
     return row[0] if row else None
 
 
 def latest(con: duckdb.DuckDBPyConnection, action_prefix: str, subject: str | None = None) -> dict | None:
     """Most recent evidence record for an action prefix (and optional subject)."""
     init(con)
-    q = "SELECT seq, ts, actor, action, subject, payload, chain_hash FROM evidence WHERE action LIKE ?"
+    q = "SELECT seq, ts, actor, action, subject, payload, chain_hash FROM main.evidence WHERE action LIKE ?"
     args: list = [action_prefix + "%"]
     if subject:
         q += " AND subject = ?"

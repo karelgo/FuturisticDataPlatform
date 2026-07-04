@@ -1,0 +1,34 @@
+image:
+  repository: ghcr.io/karelgo/carina
+  tag: "0.2.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8899
+
+# Persist /app/data (the DuckDB lakehouse + bronze payloads) across restarts.
+persistence:
+  enabled: false
+  size: 5Gi
+  storageClassName: ""
+
+# Attach the Trino lane by setting e.g. "trino.compute-plane:8080/iceberg/carina".
+trinoDsn: ""
+
+resources:
+  requests: {cpu: 250m, memory: 512Mi}
+  limits: {cpu: "2", memory: 2Gi}
+
+ingress:
+  enabled: false
+  className: ""
+  host: carina.local
+  tls: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001

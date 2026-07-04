@@ -20,8 +20,14 @@ A single-node embodiment of the design: the data contract is the hub artifact, D
 python -m venv .venv && . .venv/bin/activate
 pip install -e .
 
-carina run     # ingest 4 live CBS StatLine sources → bronze/silver/gold + quality checks
+carina run     # compile contracts + ingest 5 live CBS sources → bronze/silver/gold (WAP) + checks
 carina serve   # portal + dashboard + evidence explorer on http://127.0.0.1:8899
+
+# Phase 1 — KEEL verbs:
+carina compile --check                      # CI gate: compiled artifacts must match contracts
+carina create data-product my-product      # golden path: scaffold → live, measured
+carina parity gold_a gold_b --key date     # dual-run migration gate with green-streak tracking
+carina lanes                                # compute-lane router state
 ```
 
 | | |
@@ -47,13 +53,17 @@ The dashboard's **prepared analysis** is computed from the data (deterministical
 | CARINA concept | Laptop-profile implementation |
 |---|---|
 | Contract as hub artifact (ADR-0011) | ODCS-flavored YAML in `products/*/contracts/` compiles the ingest filter, silver DDL, and quality checks |
+| **Contract compiler v1** (Phase 1) | `carina compile` → silver DDL, checks SQL, **generated OPA Rego**, **OpenFGA tuples**, **catalog entry** per contract, committed under `products/*/compiled/`; `--check` is the CI drift gate |
 | Quality compiled, never handwritten | `carina check` — checks generated from contract `quality:` blocks, results in DuckDB + evidence |
+| **Write–Audit–Publish** (ADR-0005) | Gold transforms stage in a `wap` schema, compiled audits gate the publish; red audits leave production untouched |
 | Evidence plane (ADR-0010) | Append-only SHA-256 hash chain over every ingest/transform/check/query; verified live in the UI |
 | Semantic layer as only path (ADR-0008) | `semantic/metrics.yaml` → compiled SQL with provenance; the UI never sends SQL |
-| Lane routing (ADR-0004) | Single `duckdb-local` lane, reported per query — the seam where Trino/StarRocks would attach |
+| **Lane routing v1** (ADR-0004) | A real router on every semantic query: `duckdb-local` + a `trino` seam (`CARINA_TRINO_DSN`), estimate-based escalation, full routing decision in provenance |
+| **Golden path, measured** | `carina create data-product` scaffold → first green run records `golden_path.ship`; **`wages-nl` shipped in 4.6 min** against the 60-min KEEL target |
+| **Migration parity gate** | `carina parity a b --key …` — row-level dual-run diffs with the 30-day green streak computed from the evidence chain |
 | Experience plane | Portal, product page with lineage DAG, flagship dashboard, evidence explorer; light + dark; table-view twin on every chart |
 
-`src/carina/` is the platform (~1,200 lines of Python), `products/labour-market-nl/` is the product, `src/carina/ui/` is the portal (no build step; ECharts vendored).
+`src/carina/` is the platform (~2,000 lines of Python, 36 tests), `products/` holds two live products (`labour-market-nl`, `wages-nl`), `src/carina/ui/` is the portal (no build step; ECharts vendored). Phase 1 build status: [docs/keel-status.md](docs/keel-status.md).
 
 ---
 
@@ -207,7 +217,7 @@ The full registry — every component, its role, and what it replaced from ODAP 
 
 ## Status
 
-**Design + working reference implementation.** The plan and decision records were produced July 2026 from a multi-perspective architecture study (state-of-the-art research across seven domains, three competing designs, adversarial review, synthesis); version claims reflect the ecosystem as of July 2026. The laptop-profile reference implementation above demonstrates the design's core loop end to end. Full-scale implementation follows [Phase 1 — KEEL](docs/roadmap.md#phase-1--keel-months-05-the-spine-and-the-golden-path).
+**Design + working reference implementation, Phase 1 (KEEL) in progress.** The plan and decision records were produced July 2026 from a multi-perspective architecture study (state-of-the-art research across seven domains, three competing designs, adversarial review, synthesis); version claims reflect the ecosystem as of July 2026. The laptop-profile reference implementation demonstrates the design's core loop end to end, and the KEEL mechanisms — contract compiler v1, lane router, write-audit-publish, the measured golden path, parity gates, and the deployment scaffolding (Docker/Helm/Argo CD/CI) — are built and tested; see [docs/keel-status.md](docs/keel-status.md) for the scope-by-scope tracker.
 
 The reference implementation uses **only public open data** (CBS StatLine, CC BY 4.0) and no personal data; it is an illustration, not a product or a procurement document.
 

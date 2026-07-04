@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: carina
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/karelgo/FuturisticDataPlatform
+    targetRevision: HEAD
+    path: charts/carina
+    helm:
+      valuesObject:
+        image:
+          repository: carina   # k3d-imported local image; see platform/README.md
+          tag: "0.2.0"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: experience-plane
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

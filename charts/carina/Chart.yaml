@@ -1,0 +1,10 @@
+apiVersion: v2
+name: carina
+description: >
+  CARINA reference implementation — contract-driven lakehouse, semantic layer,
+  evidence plane, and portal UI. This chart deploys the containerized laptop
+  profile (implementation-plan Phase 0); production planes (Lakekeeper, Trino,
+  Keycloak, …) attach as sibling charts per plane in later phases.
+type: application
+version: 0.2.0
+appVersion: "0.2.0"

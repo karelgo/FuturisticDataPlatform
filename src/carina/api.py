@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, evidence, insights, quality, semantic
+from . import config, evidence, insights, lanes, quality, semantic
 from .contracts import load_products
 
 app = FastAPI(title="CARINA — laptop profile", version="0.1.0")
@@ -236,6 +236,20 @@ def evidence_log(limit: int = Query(default=50, le=500), offset: int = 0, action
 def evidence_verify():
     with _lock:
         return evidence.verify(con())
+
+
+@app.get("/api/lanes")
+def lane_state():
+    with _lock:
+        router = lanes.LaneRouter(con())
+        return {
+            "escalate_threshold_rows": lanes.escalate_threshold(),
+            "lanes": [
+                {"id": lane.id, "engine": lane.engine, "attached": lane.attached,
+                 "description": lane.description}
+                for lane in router.lanes()
+            ],
+        }
 
 
 # ---- static UI -------------------------------------------------------------
