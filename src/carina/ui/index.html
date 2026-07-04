@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CARINA — Data & Analytics Platform</title>
+  <meta name="description" content="CARINA laptop profile — contract-driven data products with evidence-backed analytics. Flagship: the Dutch labour market in transition." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⭐</text></svg>" />
+  <link rel="stylesheet" href="/assets/css/app.css" />
+  <script>
+    // Set theme before first paint to avoid flash.
+    (function () {
+      const saved = localStorage.getItem("carina-theme");
+      const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.dataset.theme = saved || preferred;
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <a class="wordmark" href="#/">
+      <svg class="wordmark-keel" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M12 2 L12 15 M12 15 C12 15 5 15 4 9 M12 15 C12 15 19 15 20 9 M6 19 L18 19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span>CARINA</span>
+      <span class="wordmark-profile">laptop&nbsp;profile</span>
+    </a>
+    <nav class="topnav" aria-label="Primary">
+      <a href="#/" data-nav="portal">Portal</a>
+      <a href="#/product/labour-market-nl" data-nav="product">Data product</a>
+      <a href="#/dashboard" data-nav="dashboard">Dashboard</a>
+      <a href="#/evidence" data-nav="evidence">Evidence</a>
+    </nav>
+    <div class="topbar-right">
+      <span class="evidence-pill" id="evidence-pill" title="Evidence chain status">
+        <span class="pill-dot"></span><span id="evidence-pill-text">evidence</span>
+      </span>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main" class="page" aria-live="polite"></main>
+
+  <aside class="drawer" id="trust-drawer" aria-hidden="true" role="dialog" aria-label="Why you can trust this">
+    <div class="drawer-panel">
+      <header class="drawer-head">
+        <h2>Why you can trust this</h2>
+        <button class="drawer-close" id="trust-close" type="button" aria-label="Close">✕</button>
+      </header>
+      <div class="drawer-body" id="trust-body"></div>
+    </div>
+    <div class="drawer-scrim" id="trust-scrim"></div>
+  </aside>
+
+  <footer class="footer">
+    <span>CARINA reference implementation · synthetic-free — real open data from <a href="https://opendata.cbs.nl" rel="noopener">CBS StatLine</a> (CC&nbsp;BY&nbsp;4.0)</span>
+    <span>Contract → checks → masks → evidence: compiled, not glued.</span>
+  </footer>
+
+  <script src="/assets/vendor/echarts.min.js"></script>
+  <script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>

@@ -35,6 +35,7 @@ crash.log
 !.env.example
 
 # Data / build artifacts
+/data/
 *.parquet
 *.duckdb
 target/

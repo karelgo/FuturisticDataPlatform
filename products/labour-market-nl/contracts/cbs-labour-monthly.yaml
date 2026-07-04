@@ -1,0 +1,41 @@
+apiVersion: odcs/v3.1-carina
+id: cbs-labour-monthly
+name: "Monthly labour participation and unemployment (NL, 15–74)"
+owner: platform-team@carina.local
+classification: public
+
+source:
+  type: cbs-odata
+  table: 80590eng
+  url: https://opendata.cbs.nl/ODataApi/odata/80590eng
+  landing_page: https://opendata.cbs.nl/statline/#/CBS/en/dataset/80590eng
+  attribution: "CBS (Statistics Netherlands), Monthly labour participation and unemployment"
+  license: CC BY 4.0
+  # Total sex, age 15–74; note CBS pads dimension keys to fixed width.
+  filter: "Sex eq 'T001038' and Age eq '52052   '"
+  dimensions: [Sex, Age]
+
+silver:
+  table: silver_labour_monthly
+  where: "substr(Periods, 5, 2) = 'MM'"
+  columns:
+    - {name: labour_force_sa,      from: SeasonallyAdjusted_2,  type: DOUBLE, description: "Labour force, seasonally adjusted", unit: "x1000"}
+    - {name: employed_sa,          from: SeasonallyAdjusted_4,  type: DOUBLE, description: "Employed labour force, seasonally adjusted", unit: "x1000"}
+    - {name: unemployed_sa,        from: SeasonallyAdjusted_6,  type: DOUBLE, description: "Unemployed labour force, seasonally adjusted", unit: "x1000"}
+    - {name: unemployment_rate_sa, from: SeasonallyAdjusted_8,  type: DOUBLE, description: "Unemployment rate, seasonally adjusted", unit: "%"}
+    - {name: gross_participation_sa, from: SeasonallyAdjusted_12, type: DOUBLE, description: "Gross labour participation rate, seasonally adjusted", unit: "%"}
+    - {name: net_participation_sa,   from: SeasonallyAdjusted_14, type: DOUBLE, description: "Net labour participation rate, seasonally adjusted", unit: "%"}
+
+quality:
+  key: [date]
+  checks:
+    - {type: not_null, columns: [date]}
+    - {type: unique, columns: [date]}
+    - {type: min_rows, value: 250}
+    - {type: range, column: unemployment_rate_sa, min: 0, max: 20}
+    - {type: range, column: net_participation_sa, min: 40, max: 90}
+    - {type: freshness, column: date, max_lag_days: 92}
+
+refresh:
+  cadence: monthly
+  sla: "available within 6 weeks after month end"

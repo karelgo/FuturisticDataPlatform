@@ -1,0 +1,155 @@
+# Semantic layer for labour-market-nl.
+# The only consumption path: the UI (and agents) query these metrics by id —
+# never raw SQL (ADR-0008). Every model names the contracts behind it, so each
+# answer carries provenance.
+
+models:
+  labour_market_monthly:
+    table: gold_labour_market_monthly
+    time: date
+    grain: month
+    contracts: [cbs-labour-monthly]
+
+  vacancies_quarterly:
+    table: gold_vacancies_quarterly
+    time: date
+    grain: quarter
+    contracts: [cbs-vacancies-sector]
+
+  vacancies_by_sector:
+    table: gold_vacancies_by_sector
+    time: date
+    grain: quarter
+    dimensions: {sector: sector}
+    contracts: [cbs-vacancies-sector]
+
+  labour_tension:
+    table: gold_labour_tension
+    time: date
+    grain: quarter
+    contracts: [cbs-vacancies-sector, cbs-labour-monthly]
+
+  workforce_position:
+    table: gold_workforce_position
+    time: date
+    grain: quarter
+    contracts: [cbs-participation-keyfigures]
+
+  participation_by_age:
+    table: gold_participation_by_age
+    time: date
+    grain: year
+    dimensions: {age_group: age_group}
+    contracts: [cbs-participation-keyfigures]
+
+  employment_by_sector:
+    table: gold_employment_by_sector
+    time: date
+    grain: quarter
+    dimensions: {sector: sector}
+    contracts: [cbs-employment-sector]
+
+metrics:
+  unemployment_rate:
+    title: Unemployment rate
+    description: Unemployed as % of the labour force (15–74, seasonally adjusted).
+    model: labour_market_monthly
+    expr: unemployment_rate
+    unit: "%"
+    good_direction: down
+
+  unemployed:
+    title: Unemployed persons
+    description: Unemployed labour force, seasonally adjusted.
+    model: labour_market_monthly
+    expr: unemployed
+    unit: "×1,000"
+    good_direction: down
+
+  employed:
+    title: Employed persons
+    description: Employed labour force, seasonally adjusted.
+    model: labour_market_monthly
+    expr: employed
+    unit: "×1,000"
+    good_direction: up
+
+  net_participation:
+    title: Net labour participation
+    description: Employed as % of the population 15–74, seasonally adjusted.
+    model: labour_market_monthly
+    expr: net_participation
+    unit: "%"
+    good_direction: up
+
+  vacancies_unfilled:
+    title: Unfilled vacancies
+    description: Open vacancies at end of quarter, all economic activities.
+    model: vacancies_quarterly
+    expr: vacancies_unfilled
+    unit: "×1,000"
+    good_direction: balance
+
+  vacancies_by_sector:
+    title: Unfilled vacancies by sector
+    description: Open vacancies at end of quarter per SIC 2008 section.
+    model: vacancies_by_sector
+    expr: vacancies
+    unit: "×1,000"
+    good_direction: none
+
+  tension_ratio:
+    title: Labour-market tension
+    description: Unfilled vacancies per unemployed person (≥ 1 means more vacancies than unemployed).
+    model: labour_tension
+    expr: tension_ratio
+    unit: "ratio"
+    good_direction: balance
+
+  permanent_share:
+    title: Permanent contracts share
+    description: Permanent employees as % of the employed labour force.
+    model: workforce_position
+    expr: permanent_share
+    unit: "%"
+    good_direction: none
+
+  flexible_share:
+    title: Flexible contracts share
+    description: Flexible employees as % of the employed labour force.
+    model: workforce_position
+    expr: flexible_share
+    unit: "%"
+    good_direction: none
+
+  self_employed_share:
+    title: Self-employed share
+    description: Self-employed as % of the employed labour force.
+    model: workforce_position
+    expr: self_employed_share
+    unit: "%"
+    good_direction: none
+
+  part_time_share:
+    title: Part-time share
+    description: Part-time workers as % of the employed labour force.
+    model: workforce_position
+    expr: part_time_share
+    unit: "%"
+    good_direction: none
+
+  participation_by_age:
+    title: Participation by age
+    description: Net labour participation rate per 10-year age band (yearly).
+    model: participation_by_age
+    expr: participation_rate
+    unit: "%"
+    good_direction: up
+
+  employment_by_sector:
+    title: Employment by sector
+    description: Employed persons (seasonally adjusted) per main SIC 2008 sector.
+    model: employment_by_sector
+    expr: employed_persons
+    unit: "×1,000"
+    good_direction: none

@@ -1,0 +1,28 @@
+# ODPS-flavored data product descriptor — the marketplace entry compiles from this.
+id: labour-market-nl
+name: "Dutch Labour Market in Transition"
+description: >
+  How the job market is changing in the Netherlands: unemployment, vacancies,
+  labour-market tension, the shifting composition of work (permanent, flexible,
+  self-employed), sector demand, and the rise of older workers. Built from four
+  contracted CBS StatLine open-data sources.
+narrative: >
+  The Dutch labour market has inverted. For most of the 2000s there were several
+  unemployed people per unfilled vacancy; since 2021 there have been more
+  vacancies than unemployed. This product tracks that inversion and the
+  structural shifts behind it — who works, how they are contracted, and where
+  demand concentrates.
+owner: platform-team@carina.local
+tier: gold
+status: live
+tags: [labour-market, netherlands, cbs, open-data, flagship]
+
+# Gold-table lineage (upstream tables per gold table) — drives the lineage graph.
+lineage:
+  gold_labour_market_monthly: [silver_labour_monthly]
+  gold_vacancies_quarterly: [silver_vacancies_sector]
+  gold_vacancies_by_sector: [silver_vacancies_sector]
+  gold_labour_tension: [silver_vacancies_sector, silver_labour_monthly]
+  gold_workforce_position: [silver_participation]
+  gold_participation_by_age: [silver_participation]
+  gold_employment_by_sector: [silver_employment_sector]

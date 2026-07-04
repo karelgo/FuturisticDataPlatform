@@ -1,0 +1,45 @@
+apiVersion: odcs/v3.1-carina
+id: cbs-participation-keyfigures
+name: "Labour participation key figures: employment position and age"
+owner: platform-team@carina.local
+classification: public
+
+source:
+  type: cbs-odata
+  table: 85264ENG
+  url: https://opendata.cbs.nl/ODataApi/odata/85264ENG
+  landing_page: https://opendata.cbs.nl/statline/#/CBS/en/dataset/85264ENG
+  attribution: "CBS (Statistics Netherlands), Labour participation; key figures"
+  license: CC BY 4.0
+  # Total sex, total education; all age groups (age selection happens downstream).
+  filter: "Sex eq 'T001038' and HighestEducationalLevel eq 'T001143'"
+  dimensions: [Sex, Age, HighestEducationalLevel]
+
+silver:
+  table: silver_participation
+  dim_joins:
+    - {dimension: Age, alias: age}
+  columns:
+    - {name: age_code,  expr: "trim(b.Age)", type: VARCHAR, description: "CBS age-group code"}
+    - {name: age_group, expr: "trim(age.Title)", type: VARCHAR, description: "Age group title"}
+    - {name: employed,           from: EmployedLabourForce_3, type: DOUBLE, unit: "x1000", description: "Employed labour force"}
+    - {name: permanent_employee, from: PermanentEmployee_5,   type: DOUBLE, unit: "x1000", description: "Employees with permanent contract"}
+    - {name: flexible_employee,  from: FlexibleEmployee_6,    type: DOUBLE, unit: "x1000", description: "Employees with flexible contract"}
+    - {name: self_employed,      from: SelfEmployedPerson_7,  type: DOUBLE, unit: "x1000", description: "Self-employed persons"}
+    - {name: part_time,          from: PartTime_12,           type: DOUBLE, unit: "x1000", description: "Employed working part-time"}
+    - {name: full_time,          from: FullTime_19,           type: DOUBLE, unit: "x1000", description: "Employed working full-time"}
+    - {name: unemployment_rate,  from: UnemploymentRate_21,   type: DOUBLE, unit: "%", description: "Unemployment rate"}
+    - {name: net_participation,  from: NetLabourParticipationRate_24, type: DOUBLE, unit: "%", description: "Net labour participation rate"}
+
+quality:
+  key: [date, age_code, period_type]
+  checks:
+    - {type: not_null, columns: [date, age_code]}
+    - {type: unique, columns: [date, age_code, period_type]}
+    - {type: min_rows, value: 1200}
+    - {type: range, column: net_participation, min: 0, max: 100}
+    - {type: freshness, column: date, max_lag_days: 200}
+
+refresh:
+  cadence: quarterly
+  sla: "available ~6 weeks after quarter end"

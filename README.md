@@ -4,7 +4,55 @@
 
 **CARINA** is the design for a next-generation, Kubernetes-native, open-source-first, EU-sovereign data & analytics platform — the successor to the [Open Data & Analytics Platform (ODAP)](https://github.com/karelgo/open-data-analytics-platform). *Carina* is the keel of the old ship constellation Argo Navis: the load-bearing spine on which the whole vessel is built. In this platform the keel is the **contract-bearing data product** — one Git-versioned contract file from which everything else compiles.
 
-This repository is the master plan: architecture, component selection, governance model, AI-native operation, persona journeys, roadmap, and the architecture decision records behind every major choice.
+This repository contains both the **master plan** (architecture, component selection, governance model, AI-native operation, persona journeys, roadmap, ADRs) and a **working reference implementation** — the CARINA laptop profile — with a flagship data product analyzing **how the Dutch job market is changing**, built on live open data from CBS (Statistics Netherlands).
+
+---
+
+## 🚢 The Reference Implementation (runs on your laptop)
+
+A single-node embodiment of the design: the data contract is the hub artifact, DuckDB is the compute lane, quality checks are **compiled from contracts** (never handwritten), every platform action lands in a **hash-chained evidence log**, and all consumption — the dashboard included — goes through a **governed semantic layer**. No raw SQL from consumers, ever.
+
+```bash
+# Python 3.11+ required
+python -m venv .venv && . .venv/bin/activate
+pip install -e .
+
+carina run     # ingest 4 live CBS StatLine sources → bronze/silver/gold + quality checks
+carina serve   # portal + dashboard + evidence explorer on http://127.0.0.1:8899
+```
+
+| | |
+|---|---|
+| ![Dashboard (light)](docs/images/dashboard-light.png) | ![Dashboard (dark)](docs/images/dashboard-dark.png) |
+| ![Trust drawer](docs/images/trust-light.png) | ![Product page with lineage](docs/images/product-light.png) |
+
+### The flagship use case: the Dutch job market in transition
+
+Four contracted [CBS StatLine](https://opendata.cbs.nl) open-data sources (CC BY 4.0) feed one data product, [`products/labour-market-nl`](products/labour-market-nl):
+
+| Contract | CBS dataset | What it contributes |
+|---|---|---|
+| `cbs-labour-monthly` | [80590eng](https://opendata.cbs.nl/statline/#/CBS/en/dataset/80590eng) | Monthly unemployment & participation, 2003–today |
+| `cbs-vacancies-sector` | [80472eng](https://opendata.cbs.nl/statline/#/CBS/en/dataset/80472eng) | Quarterly vacancies by SIC 2008 sector, 1997–today |
+| `cbs-participation-keyfigures` | [85264ENG](https://opendata.cbs.nl/statline/#/CBS/en/dataset/85264ENG) | Permanent / flexible / self-employed composition; participation by age |
+| `cbs-employment-sector` | [85920ENG](https://opendata.cbs.nl/statline/#/CBS/en/dataset/85920ENG) | Employment by sector (National Accounts), 1995–today |
+
+The dashboard's **prepared analysis** is computed from the data (deterministically — the laptop stand-in for the Analyst agent) and finds the story: labour-market tension went from **0.14 vacancies per unemployed person (2013) to a peak of 1.47 (2022)**; the market has been near or above parity since 2021; flexible work **peaked in 2017 and is receding**; participation of 55–64-year-olds rose from **58% to 76%** since 2013; and vacancy growth concentrates in **construction and health care**. Every chart carries a *"Why trust this?"* panel: the contracts behind it, their latest quality-check results, source freshness, the compiled SQL, and the evidence-chain head.
+
+### What of CARINA is real here
+
+| CARINA concept | Laptop-profile implementation |
+|---|---|
+| Contract as hub artifact (ADR-0011) | ODCS-flavored YAML in `products/*/contracts/` compiles the ingest filter, silver DDL, and quality checks |
+| Quality compiled, never handwritten | `carina check` — checks generated from contract `quality:` blocks, results in DuckDB + evidence |
+| Evidence plane (ADR-0010) | Append-only SHA-256 hash chain over every ingest/transform/check/query; verified live in the UI |
+| Semantic layer as only path (ADR-0008) | `semantic/metrics.yaml` → compiled SQL with provenance; the UI never sends SQL |
+| Lane routing (ADR-0004) | Single `duckdb-local` lane, reported per query — the seam where Trino/StarRocks would attach |
+| Experience plane | Portal, product page with lineage DAG, flagship dashboard, evidence explorer; light + dark; table-view twin on every chart |
+
+`src/carina/` is the platform (~1,200 lines of Python), `products/labour-market-nl/` is the product, `src/carina/ui/` is the portal (no build step; ECharts vendored).
+
+---
 
 ---
 
@@ -155,9 +203,9 @@ The full registry — every component, its role, and what it replaced from ODAP 
 
 ## Status
 
-**Design phase.** This repository currently contains the platform plan and decision records, produced July 2026 from a multi-perspective architecture study (state-of-the-art research across seven domains, three competing designs, adversarial review, synthesis). Version claims reflect the ecosystem as of July 2026. Implementation begins with [Phase 1 — KEEL](docs/roadmap.md#phase-1--keel-months-05-the-spine-and-the-golden-path).
+**Design + working reference implementation.** The plan and decision records were produced July 2026 from a multi-perspective architecture study (state-of-the-art research across seven domains, three competing designs, adversarial review, synthesis); version claims reflect the ecosystem as of July 2026. The laptop-profile reference implementation above demonstrates the design's core loop end to end. Full-scale implementation follows [Phase 1 — KEEL](docs/roadmap.md#phase-1--keel-months-05-the-spine-and-the-golden-path).
 
-Like its predecessor, CARINA's reference implementation will use **synthetic data only** and is not a product or a procurement document.
+The reference implementation uses **only public open data** (CBS StatLine, CC BY 4.0) and no personal data; it is an illustration, not a product or a procurement document.
 
 ## License
 

@@ -1,0 +1,40 @@
+apiVersion: odcs/v3.1-carina
+id: cbs-employment-sector
+name: "Employment by economic activity (National Accounts), quarterly"
+owner: platform-team@carina.local
+classification: public
+
+source:
+  type: cbs-odata
+  table: 85920ENG
+  url: https://opendata.cbs.nl/ODataApi/odata/85920ENG
+  landing_page: https://opendata.cbs.nl/statline/#/CBS/en/dataset/85920ENG
+  attribution: "CBS (Statistics Netherlands), Employment; economic activity, quarterly, National Accounts"
+  license: CC BY 4.0
+  filter: "EmploymentType eq 'T001413'"
+  dimensions: [EmploymentType, SectorBranchesSIC2008]
+
+silver:
+  table: silver_employment_sector
+  where: "substr(Periods, 5, 2) = 'KW'"
+  dim_joins:
+    - {dimension: SectorBranchesSIC2008, alias: sec}
+  columns:
+    - {name: sector_code, expr: "trim(b.SectorBranchesSIC2008)", type: VARCHAR, description: "CBS SIC 2008 sector code"}
+    - {name: sector,      expr: "trim(sec.Title)", type: VARCHAR, description: "Sector title (from CBS code list)"}
+    - {name: employed_persons_sa, from: EmployedPersonsSeasonalAdjusted_2, type: DOUBLE, unit: "x1000", description: "Employed persons, seasonally adjusted"}
+    - {name: jobs_sa,             from: JobsSeasonalAdjusted_4,            type: DOUBLE, unit: "x1000", description: "Jobs, seasonally adjusted"}
+    - {name: hours_worked,        from: HoursWorked_5,                     type: DOUBLE, unit: "mln hours", description: "Hours worked"}
+
+quality:
+  key: [date, sector_code]
+  checks:
+    - {type: not_null, columns: [date, sector_code]}
+    - {type: unique, columns: [date, sector_code]}
+    - {type: min_rows, value: 1500}
+    - {type: range, column: employed_persons_sa, min: 0, max: 15000}
+    - {type: freshness, column: date, max_lag_days: 200}
+
+refresh:
+  cadence: quarterly
+  sla: "available ~7 weeks after quarter end"

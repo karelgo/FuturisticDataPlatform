@@ -1,0 +1,40 @@
+apiVersion: odcs/v3.1-carina
+id: cbs-vacancies-sector
+name: "Vacancies by economic activity (SIC 2008), quarterly"
+owner: platform-team@carina.local
+classification: public
+
+source:
+  type: cbs-odata
+  table: 80472eng
+  url: https://opendata.cbs.nl/ODataApi/odata/80472eng
+  landing_page: https://opendata.cbs.nl/statline/#/CBS/en/dataset/80472eng
+  attribution: "CBS (Statistics Netherlands), Vacancies; SIC 2008; private firms and government sectors"
+  license: CC BY 4.0
+  # No server-side filter: we keep all activity codes and select sections downstream.
+  dimensions: [SIC2008SizeClasses]
+
+silver:
+  table: silver_vacancies_sector
+  where: "substr(Periods, 5, 2) = 'KW'"
+  dim_joins:
+    - {dimension: SIC2008SizeClasses, alias: sic}
+  columns:
+    - {name: sector_code,  expr: "trim(b.SIC2008SizeClasses)", type: VARCHAR, description: "CBS SIC 2008 activity code"}
+    - {name: sector,       expr: "trim(sic.Title)", type: VARCHAR, description: "Activity title (from CBS code list)"}
+    - {name: vacancies_unfilled, from: UnfilledVacancies_1, type: DOUBLE, description: "Unfilled (open) vacancies at end of quarter", unit: "x1000"}
+    - {name: vacancies_new,      from: NewVacancies_2,      type: DOUBLE, description: "New vacancies during quarter", unit: "x1000"}
+    - {name: vacancies_filled,   from: FilledVacancies_3,   type: DOUBLE, description: "Filled vacancies during quarter", unit: "x1000"}
+
+quality:
+  key: [date, sector_code]
+  checks:
+    - {type: not_null, columns: [date, sector_code]}
+    - {type: unique, columns: [date, sector_code]}
+    - {type: min_rows, value: 5000}
+    - {type: range, column: vacancies_unfilled, min: 0, max: 600}
+    - {type: freshness, column: date, max_lag_days: 200}
+
+refresh:
+  cadence: quarterly
+  sla: "available ~6 weeks after quarter end"
