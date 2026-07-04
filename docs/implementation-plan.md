@@ -34,7 +34,7 @@ The [reference implementation](../src/carina) (the `carina` laptop profile) alre
 | Observability | *(none)* | **OpenTelemetry + eBPF → ClickStack** (ClickHouse + HyperDX) | OTel Collector DaemonSet; ClickStack Helm |
 | Delivery | `uvicorn` / `pip install` | **Helm/OCI charts**, **Argo CD** GitOps, **Crossplane** workspace API | Argo CD is the only write path to prod |
 
-The rest of this document is the plan to walk that table from left to right, safely, in an order that is deployable at every step.
+The rest of this document is the plan to walk that table from left to right, safely, in an order that is deployable at every step. Every shim → production swap follows the same [migration doctrine](roadmap.md#migration-doctrine-odap--carina) as the ODAP migration: the production component **dual-runs against the shim with parity checks**, and the swap stays reversible until its parity gate passes — the platform never bets its spine on an untested replacement.
 
 ---
 
@@ -93,7 +93,7 @@ flowchart TB
 
 - **One write path.** Humans and agents change production only by merging Git; **Argo CD** reconciles. `kubectl apply` to prod is a break-glass event, logged to the evidence plane.
 - **Namespaced planes.** Each of the [seven planes](architecture.md#5-the-seven-planes) is one or more namespaces with its own NetworkPolicies, quotas, and RBAC. The plane boundary is a security boundary.
-- **A management cluster** runs Argo CD, Crossplane, and Cluster API; it provisions and reconciles the **runtime clusters** (one per region and per environment). This keeps the control plane's blast radius separate from workloads.
+- **A management cluster** runs Argo CD, Crossplane, and Cluster API; it provisions and reconciles the **runtime clusters** (one per region and per environment). This keeps the control plane's blast radius separate from workloads. It earns its keep at the **second** runtime cluster: Phase 0 and single-cluster Sloop installs run Argo CD in-cluster and graduate when the staging/prod split lands in Phase 1 — a dedicated control-plane cluster for one workload cluster is overhead, not safety.
 - **Cilium** provides the CNI, eBPF network policy, and Hubble flow visibility (which doubles as an observability source); **SPIFFE/SPIRE** issues workload identities and mTLS; **Gateway API** (Envoy Gateway) + **cert-manager** terminate TLS at the edge.
 - **Operators over bespoke YAML** wherever a mature one exists: Rook (Ceph), CloudNativePG (Postgres), Stackable (Trino/Spark/OPA), Strimzi-style (Kafka/AutoMQ), KServe (inference).
 
@@ -119,17 +119,17 @@ Config is environment-overlaid (Helm values or Kustomize), promoted dev → stag
 These run in parallel with the component build-out; each is a standing capability with an owner, not a one-time task.
 
 ### 3.1 Security & supply chain
-- **SSO everywhere** via Keycloak OIDC; no component ships with its own local login enabled. SCIM/LDAP federation to the customer IdP.
+- **SSO everywhere** via Keycloak OIDC; no component ships with its own local login enabled. SCIM/LDAP federation to the customer IdP. A **break-glass access path** (sealed local-admin credentials; every use logged to the evidence plane) exists for the day Keycloak itself is down — an identity outage must not be a platform lockout.
 - **Zero-trust workload identity**: SPIFFE/SPIRE SVIDs (hourly rotation), mTLS between all services (Cilium/mesh), default-deny NetworkPolicies per plane.
 - **Authorization**: OpenFGA (ReBAC at the catalog) + OPA (row/column/purpose, Rego *generated* from contracts). Cluster RBAC least-privilege; no `cluster-admin` in workload namespaces.
-- **Secrets**: External Secrets Operator + OpenBao; no secrets in Git (sealed/external refs only); automatic rotation.
+- **Secrets**: External Secrets Operator + OpenBao; no secrets in Git (sealed/external refs only); automatic rotation. The **bootstrap chain is documented and minimal**: OpenBao's unseal (KMS or a Shamir ceremony), Argo CD's own Git/cluster credentials, and the sigstore trust root are the only hand-placed secrets — each with a named owner and a rotation drill.
 - **Supply chain**: every image built in CI is SBOM'd (**syft**), scanned (**trivy/grype**), and **signed (cosign/sigstore)**; admission control (Kyverno) rejects unsigned or critical-CVE images; base images pinned by digest.
 - **Runtime**: Pod Security Standards (restricted), read-only rootfs, non-root, seccomp; runtime threat detection (Falco/Tetragon) feeding the evidence/observability plane.
 - **Program**: quarterly third-party pen test; a documented vulnerability-disclosure and CVE-response SLA.
 
 ### 3.2 Multi-tenancy & isolation
 - **Soft isolation** (default): namespace-per-tenant with ResourceQuota, LimitRange, NetworkPolicy, and OPA/Kyverno guardrails; per-tenant Lakekeeper **warehouses** and OpenFGA stores.
-- **Hard isolation** (regulated tenants / agent sandboxes): **vCluster** — a full virtual control plane per tenant.
+- **Hard isolation** (regulated tenants / agent sandboxes): **vCluster** — a full virtual control plane per tenant — **plus a dedicated node pool** (taints/tolerations), because a virtual control plane alone still shares kernels with its neighbors; add the Confidential Containers tier where the threat model includes the neighbor (or the operator).
 - **Data isolation**: catalog-level credential vending means a tenant's engines only ever receive scoped, short-lived credentials to their own tables.
 - **Cost isolation**: OpenCost attributes spend per namespace/tenant/query lane for chargeback (tags from the ODPS descriptor).
 
@@ -138,6 +138,7 @@ These run in parallel with the component build-out; each is a standing capabilit
 - CloudNativePG with **synchronous replicas** for all control-plane Postgres (Lakekeeper, Keycloak, OpenMetadata, Dagster, OpenFGA).
 - Autoscaling: **Karpenter** (nodes, spot-first) + **KEDA/HPA** (pods, scale-to-zero for idle lanes) + **Kueue/DRA** (fair-share, GPU).
 - Stateless services ≥ 2 replicas; graceful shutdown and readiness gates so rollouts never drop requests.
+- **The substrate is upgraded like a component**: Kubernetes minor versions one at a time, staging first, staged node-pool rotation with PDB-driven drains, gated by the conformance suite — "any CNCF Kubernetes" includes the version you're upgrading to.
 
 ### 3.4 Disaster recovery & backup
 Implements the DR tiers in [governance-and-sovereignty.md §8](governance-and-sovereignty.md#8-disaster-recovery--backup):
@@ -149,10 +150,11 @@ Implements the DR tiers in [governance-and-sovereignty.md §8](governance-and-so
 | 2 | Bronze/raw + AutoMQ segments | Async replication; re-ingestable sources documented | ≤ 1 h / ≤ 24 h |
 | 3 | Scratch/dev | none | — |
 
-**Doctrine:** Iceberg snapshots are *not* backups (same bucket). True backup = cross-site replication + a catalog PITR consistency point. **Drills are scheduled**: monthly Tier-0 restore, quarterly full DR game day, quarterly Lakekeeper→Polaris migration drill — each publishes an RTO scorecard. A backup never restored is a hypothesis, not a control.
+**Doctrine:** Iceberg snapshots are *not* backups (same bucket). True backup = cross-site replication + a catalog PITR consistency point. And because Tier 0 (catalog Postgres) and Tier 1 (Iceberg files) replicate on **independent clocks**, a restored catalog can reference files the replica never received — or hold no record of files that did arrive. The **catalog↔data reconciliation runbook** is therefore a named deliverable, not an assumption: it defines the consistency point (the catalog PITR timestamp), the catalog-vs-bucket diff, the orphan-file sweep, and which side wins each conflict class. **Drills are scheduled**: monthly Tier-0 restore that executes that runbook end to end (not just the Postgres restore), quarterly full DR game day, quarterly Lakekeeper→Polaris migration drill — each publishes an RTO scorecard. A backup never restored is a hypothesis, not a control.
 
 ### 3.5 Observability & SRE
 - **OpenTelemetry + eBPF → ClickStack** (ClickHouse + HyperDX): one SQL-queryable store for logs, metrics, traces — the platform's own lanes can query it.
+- **Telemetry is data too.** ClickStack holds query text, logs, and traces that can carry personal data: PII scrubbing at the OTel Collector, contract-classified retention on the signal tables, and access through the same OIDC/OPA fabric as any other table — observability must not become the ungoverned side door.
 - **SLOs** on every user-facing capability *and* on the joy metrics (data-product-to-live time, query latency, answer latency), with error budgets. Alerting → **GoAlert**, routed from the contract `owner` field.
 - **Runbooks** live beside components (Backstage TechDocs); on-call is one-week rotation where **the Engineer agent files the first remediation PR before a human is paged**.
 
@@ -177,6 +179,7 @@ Implements the DR tiers in [governance-and-sovereignty.md §8](governance-and-so
 
 - **Source**: this GitHub repo (mono-repo for platform + charts + products; product teams may have satellite repos that publish contracts).
 - **Build**: GitHub Actions → OCI images (multi-arch), SBOM, scan, sign; Helm charts published as **OCI artifacts** to the registry.
+- **Registry**: a named component, not an assumption. GHCR or the provider registry for S2; self-hosted **Harbor** (HA, replicated, backed up to the Tier-0 bar) for S1 sovereign, on-prem, and air-gapped installs. Once admission control rejects unsigned images, the registry **and the sigstore trust root sit on the critical path** — if they are down, nothing deploys.
 - **Deploy**: **Argo CD app-of-apps** per cluster; environments **dev → staging → prod** promoted by PR with required checks (datacontract-cli contract gate, unit/integration, conformance smoke, policy validation).
 - **Progressive delivery**: **Argo Rollouts** (canary + shadow-replay) for compute-engine and API changes; automated rollback on SLO breach.
 - **Ephemeral environments**: every product PR spins a **vCluster** preview with a scoped data slice, torn down on merge — the "laptop parity in CI" promise.
@@ -190,14 +193,15 @@ Each phase is **independently deployable and valuable**; you never have a half-b
 
 ### Phase 0 — Deployable MVP (weeks 0–6): "the demo, but on a cluster, with a login"
 Turn the reference implementation into a real, if minimal, K8s service — the smallest thing that is genuinely deployable and secured.
-- Containerize `carina` (API + UI); Helm chart; deploy to a managed cluster (any cloud) and to k3d.
+- Containerize `carina` (API + UI); Helm chart; publish both **signed** from CI to the chosen registry (GHCR/provider for S2, Harbor for S1); deploy to a managed cluster (any cloud) and to k3d.
 - Move state off the DuckDB file: **CloudNativePG** for metadata; **provider S3 (or Rook-Ceph)** for object storage; DuckDB reads Parquet/Iceberg on S3 instead of a local file.
-- **Keycloak SSO** in front of the portal and API; Gateway API + cert-manager TLS; default-deny NetworkPolicies.
-- **Argo CD** managing the whole thing from Git; **OTel → ClickStack** wired.
+- **The evidence chain moves with the state**: out of the DuckDB file into an append-only CNPG table with identical hash-chain semantics, with the migration into the Phase-2 Iceberg audit tables documented from day one. The MVP never drops its trust story.
+- **Keycloak SSO** in front of the portal and API; Gateway API + cert-manager TLS; default-deny NetworkPolicies; break-glass credentials sealed.
+- **Argo CD in-cluster** managing the whole thing from Git (the management cluster arrives with the second cluster in Phase 1); **OTel wired from day one** — into ClickStack, or a managed OTLP sink first if the six weeks demand it (the OTLP seam makes the swap free).
 - **Definition of done:** the labour-market app runs on a cloud cluster behind SSO, deployed only via Git merge, with metrics/logs/traces flowing and a Tier-0 Postgres backup taken. *This is your first "deploy on any cloud" milestone.*
 
 ### Phase 1 — KEEL (months ~1.5–6): the lakehouse spine
-Swap the storage/catalog/compute shims for the real spine. Scope, DoD, and the ODAP-style migration mechanics are in [roadmap.md → KEEL](roadmap.md#phase-1--keel-months-05-the-spine-and-the-golden-path): Rook-Ceph/Garage, **Lakekeeper** + Iceberg v3, DuckDB + Trino lanes with the **Lane Router**, SQLMesh + SQLGlot + Recce + WAP, Dagster, dlt ingestion, the contract compiler emitting masks/tuples/DDL, the full identity fabric (Keycloak + SPIFFE + OpenFGA + generated OPA), Backstage + `carina` CLI.
+Swap the storage/catalog/compute shims for the real spine. Scope, DoD, and the ODAP-style migration mechanics are in [roadmap.md → KEEL](roadmap.md#phase-1--keel-months-05-the-spine-and-the-golden-path): Rook-Ceph/Garage, **Lakekeeper** + Iceberg v3, DuckDB + Trino lanes with the **Lane Router**, SQLMesh + SQLGlot + Recce + WAP, Dagster, dlt ingestion, the contract compiler emitting masks/tuples/DDL, the full identity fabric (Keycloak + SPIFFE + OpenFGA + generated OPA), Backstage + `carina` CLI. The **management cluster** (Argo CD + Crossplane + Cluster API) stands up here, when the staging/prod split gives it a job; the first Crossplane XRD — "give me a data-product workspace" — makes product onboarding self-service.
 - **DoD (engineering):** a new data product ships end-to-end in < 60 min, measured; the reference app's tables are Iceberg-on-Lakekeeper with row-level parity; Tier-0 restore drill passed; conformance suite running nightly.
 
 ### Phase 2 — SAILS (months ~6–10): motion, semantics, experience
@@ -248,6 +252,8 @@ The platform is open-source-first and portable by design, but you can trade sove
 | Inference | vLLM/KServe on your GPUs | KServe on managed GPU, or policy-gated frontier APIs |
 | Observability | Self-hosted ClickStack | ClickStack on managed ClickHouse |
 
+**Default for a first production install: managed Kubernetes + provider S3.** Rook-Ceph is the heaviest single ops item in the stack; take it on when on-prem or bare metal is a hard requirement, not as a default posture — an EU provider's managed Kubernetes and S3 keep the install fully S1 sovereign while cutting the day-2 load roughly in half.
+
 The rule ([non-goals](risks-and-non-goals.md)): **no proprietary control-plane dependency** — a managed service is acceptable only where swapping it out is a config change, never a re-architecture. That is what keeps "any cloud" true.
 
 ---
@@ -281,17 +287,19 @@ Extends the platform [bets](risks-and-non-goals.md) with execution risks.
 | Enterprise integration drag (SSO, RBAC, audit) | These are Phase-0/Phase-1 workstreams, not afterthoughts; SCIM/LDAP federation early |
 | Team too small for the timeline | Phase boundaries/exit criteria are fixed; month numbers flex; Sloop is a supported smaller target |
 | Agent autonomy vs. auditability | Agents act only via Git PRs; pre-approved auto-merge classes; noise budgets as SLOs |
+| Catalog and data restore to inconsistent points | The catalog↔data reconciliation runbook is a named deliverable (§3.4); the monthly Tier-0 drill executes it end to end |
+| Registry / trust root becomes the deploy single point of failure | Harbor HA + replication (S1) or provider-registry SLA (S2); sigstore trust root backed up to the Tier-0 bar |
 
 ---
 
 ## 11. Immediate next steps (first 2–4 weeks)
 
-1. **Stand up the management cluster** (Argo CD + Crossplane + Cluster API) on the chosen substrate; wire this repo as the GitOps source.
-2. **Containerize and chart `carina`** (API + UI); publish signed OCI image + Helm chart from GitHub Actions.
-3. **Externalize state**: CloudNativePG for metadata; point object storage at provider S3 or a Rook-Ceph install; convert the reference tables to Iceberg-on-Lakekeeper (start of Phase 1) or keep Parquet-on-S3 for the Phase-0 MVP.
-4. **Put Keycloak in front**: SSO on the portal + API; Gateway API + cert-manager TLS; default-deny NetworkPolicies.
-5. **Wire OTel → ClickStack** and take the **first Tier-0 backup + restore drill**.
-6. **Write the first Crossplane XRD** — "give me a data-product workspace" — so product onboarding is self-service from day one.
+1. **Stand up one cluster with Argo CD in-cluster** on the chosen substrate (managed Kubernetes + provider S3 by default — see §8); wire this repo as the GitOps source. The management cluster waits for Phase 1.
+2. **Pick the registry and root of trust**: GHCR/provider registry (S2) or Harbor (S1); publish the first **signed** OCI image + Helm chart from GitHub Actions; enable signature-checking admission from the very first deploy.
+3. **Containerize and chart `carina`** (API + UI).
+4. **Externalize state**: CloudNativePG for metadata **and the evidence hash chain**; point object storage at provider S3 or a Rook-Ceph install; convert the reference tables to Iceberg-on-Lakekeeper (start of Phase 1) or keep Parquet-on-S3 for the Phase-0 MVP.
+5. **Put Keycloak in front**: SSO on the portal + API; Gateway API + cert-manager TLS; default-deny NetworkPolicies; seal the break-glass credentials.
+6. **Wire OTel** (ClickStack, or a managed OTLP sink first), take the **first Tier-0 backup + restore drill**, and draft the **catalog↔data reconciliation runbook** so KEEL starts with its DR gate already defined.
 
 Completing these is Phase 0's Definition of Done: the platform, deployed on a cloud cluster, behind SSO, changed only through Git, observable, and backed up — the foundation every later phase builds on.
 
@@ -299,12 +307,12 @@ Completing these is Phase 0's Definition of Done: the platform, deployed on a cl
 
 ## Appendix A — Per-cloud notes
 
-The platform contract is **"any S3 API + any CNCF Kubernetes."** Only these two endpoints and a storage class change between clouds.
+The platform contract is **"any S3 API + any CNCF Kubernetes."** Only these two endpoints and a storage class change between clouds. The Kubernetes half has a **version floor** — Kueue/DRA assumes ≥ 1.34 — and managed providers lag upstream, so check the target's supported-version window before committing to a substrate.
 
 | Cloud | Kubernetes | Object storage (the S3 endpoint) | Notes |
 |---|---|---|---|
 | **AWS** | EKS | Native **S3** (S2), or Rook-Ceph on EBS (S1) | Smoothest path; S3 is the reference S3 API |
-| **GCP** | GKE | **GCS** via its S3-compatible XML API (HMAC keys) | Works with Iceberg S3 clients directly |
+| **GCP** | GKE | **GCS** via its S3-compatible XML API (HMAC keys), or Rook-Ceph | Data-plane I/O works with Iceberg S3 clients; **validate credential vending** — HMAC keys aren't STS-style short-lived credentials, so prove Lakekeeper's vending path on GCS or front it with Ceph/a gateway as on Azure |
 | **Azure** | AKS | **Rook-Ceph** or an S3 gateway in front of Blob | Azure Blob isn't natively S3; standardize via Ceph/gateway — the one real friction point, called out honestly |
 | **EU sovereign** (StackIT, OVHcloud, Scaleway, Outscale) | Managed K8s or Cluster API | Provider S3-compatible object storage | The S1 path; SecNumCloud via Outscale |
 | **On-prem / bare metal** | Cluster API + kubeadm | **Rook-Ceph** | Full sovereignty; needs ≥ 3 storage nodes |
