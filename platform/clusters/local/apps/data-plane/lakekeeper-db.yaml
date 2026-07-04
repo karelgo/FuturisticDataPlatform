@@ -1,23 +1,22 @@
-# App-of-apps: Argo CD reconciles every Application in this directory.
-# This is the only write path to the cluster (implementation-plan §2).
+# The Lakekeeper metadata database — the platform's Tier-0 crown jewels
+# (governance-and-sovereignty §8). Manifests in platform/planes/data-plane/lakekeeper-db.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: carina-root
+  name: lakekeeper-db
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/karelgo/FuturisticDataPlatform
     targetRevision: HEAD
-    path: platform/clusters/local/apps
-    directory:
-      recurse: true
-      exclude: root.yaml
+    path: platform/planes/data-plane/lakekeeper-db
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: data-plane
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

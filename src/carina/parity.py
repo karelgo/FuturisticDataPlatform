@@ -21,7 +21,9 @@ GREEN_TARGET_DAYS = 30
 
 
 def _columns(con: duckdb.DuckDBPyConnection, table: str) -> list[str]:
-    return [r[0] for r in con.execute(f"DESCRIBE {table}").fetchall()]
+    # DESCRIBE SELECT works for plain tables and for arbitrary relations
+    # (read_parquet('…'), registered Arrow views) alike.
+    return [r[0] for r in con.execute(f"DESCRIBE SELECT * FROM {table}").fetchall()]
 
 
 def check_parity(

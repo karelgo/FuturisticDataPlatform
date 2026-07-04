@@ -12,7 +12,7 @@ import sys
 
 import duckdb
 
-from . import config, evidence, ingest, lanes, parity, quality, scaffold, transform
+from . import catalog, config, evidence, ingest, lanes, parity, quality, scaffold, transform, warehouse
 from .compiler import check_artifacts, write_artifacts
 from .contracts import load_products
 
@@ -172,6 +172,45 @@ def cmd_parity(args) -> int:
     return 0 if r["green"] else 1
 
 
+def cmd_publish(args) -> int:
+    con = _connect()
+    rc = 0
+    mode = "iceberg" if warehouse.iceberg_available() else "parquet"
+    if mode == "parquet":
+        print("→ pyiceberg not installed — publishing plain Parquet "
+              "(pip install 'carina-platform[iceberg]' for Iceberg tables)")
+    for p in _products(args):
+        s = warehouse.publish_product(con, p)
+        print(f"→ {p.id}: published {len(s['results'])} tables as {s['mode']} "
+              f"→ {s['catalog']}")
+        for r in s["results"]:
+            mark = "✓" if r["verified"] else "✗"
+            print(f"   {mark} {r['layer']}/{r['table']}: {r['rows']} rows "
+                  f"[round-trip parity {'GREEN' if r['verified'] else 'RED'}]")
+        if not s["all_verified"]:
+            rc = 1
+    return rc
+
+
+def cmd_catalog(args) -> int:
+    if args.action != "status":
+        raise SystemExit("error: only 'status' is supported")
+    s = catalog.status()
+    kind = s.get("kind")
+    if kind == "iceberg-rest":
+        state = "reachable" if s.get("reachable") else f"UNREACHABLE ({s.get('error')})"
+        print(f"→ catalog: Iceberg REST (Lakekeeper seam) at {s['uri']} [{state}]")
+    elif kind == "local-sql":
+        print(f"→ catalog: local SQL catalog at {s['uri']} "
+              "(set CARINA_CATALOG_URI to attach Lakekeeper)")
+    else:
+        print(f"→ catalog: none yet — {s.get('hint')}")
+        return 0
+    for ns, tables in (s.get("tables") or {}).items():
+        print(f"   {ns}: {', '.join(tables) if tables else '(no tables)'}")
+    return 0 if s.get("reachable") else 1
+
+
 def cmd_lanes(_args) -> int:
     con = _connect()
     router = lanes.LaneRouter(con)
@@ -219,6 +258,12 @@ def main() -> None:
     par.add_argument("table_b")
     par.add_argument("--key", required=True, help="Comma-separated key columns")
 
+    with_product(sub.add_parser(
+        "publish", help="Publish tables to the warehouse (Iceberg/Parquet), parity-verified"))
+
+    cat = sub.add_parser("catalog", help="Catalog seam state (Lakekeeper or local)")
+    cat.add_argument("action", choices=["status"])
+
     sub.add_parser("lanes", help="Show compute lanes and router state")
 
     serve = sub.add_parser("serve", help="Serve the portal UI + API")
@@ -230,6 +275,7 @@ def main() -> None:
         "ingest": cmd_ingest, "transform": cmd_transform, "check": cmd_check,
         "run": cmd_run, "serve": cmd_serve, "compile": cmd_compile,
         "create": cmd_create, "parity": cmd_parity, "lanes": cmd_lanes,
+        "publish": cmd_publish, "catalog": cmd_catalog,
     }[args.cmd](args)
     sys.exit(rc)
 

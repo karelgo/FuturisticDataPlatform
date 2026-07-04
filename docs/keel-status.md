@@ -12,7 +12,8 @@ Tracking the [roadmap's Phase 1](roadmap.md#phase-1--keel-months-05-the-spine-an
 | **Golden path**: `carina` CLI scaffold → live | ✅ **Built & measured.** `carina create data-product <id>` scaffolds contract, transforms, semantic stub, and descriptor; the first fully green `carina run --product <id>` writes a `golden_path.ship` evidence record with the measured scaffold→live time. **The `wages-nl` product shipped in 4.6 minutes** — the DoD's 60-minute bar, measured not claimed. Backstage wraps this CLI in the production profile. | [`src/carina/scaffold.py`](../src/carina/scaffold.py), evidence `golden_path.ship` |
 | **Parity checks** (ODAP dual-run migration gate) | ✅ **Built.** `carina parity <a> <b> --key …` runs row-level diffs (counts, key coverage, cell-exact EXCEPT both ways); every run is evidence-logged and the **consecutive-green streak** (runs + days, 30-day gate) is computed from the chain itself. This is the mechanic behind "parity checks green for 30 consecutive days". | [`src/carina/parity.py`](../src/carina/parity.py) |
 | Identity fabric (Keycloak + SPIFFE/SPIRE + OpenFGA + generated OPA) | 🟡 **Policy compilation built; enforcement attaches.** The compiler generates the Rego policies and FGA tuples from contracts (`access:` blocks supported: consumers + column masks). Keycloak/SPIRE/OPA deployments consume these artifacts in the cluster profile — that's the trust-plane chart in `platform/`. | `products/*/compiled/*/policy.rego`, `compiled/fga-tuples.json` |
-| Rook-Ceph / Garage; Lakekeeper + CNPG; Iceberg v3 | 🟡 **Seam defined; attaches on cluster.** The catalog entries the compiler emits are Lakekeeper-shaped; the router is where Iceberg-backed lanes plug in. Deployment scaffolding (Dockerfile, Helm chart, Argo CD app-of-apps) is in place — the data-plane charts are the next increment. | [`charts/`](../charts/), [`platform/`](../platform/) |
+| **Iceberg + catalog** (the table format and control point) | ✅ **Built.** `carina publish` writes the lakehouse out as **real Apache Iceberg tables** (pyiceberg): a local SQL catalog under `CARINA_WAREHOUSE` by default, or **Lakekeeper via the Iceberg REST API** when `CARINA_CATALOG_URI` is set — same verb, the seam moves. Contract metadata (owner, classification, license, SLA) lands in the table properties. Every publish is **round-trip parity-verified** and evidence-logged; `carina catalog status` asks the catalog itself what it serves. | [`src/carina/warehouse.py`](../src/carina/warehouse.py), [`src/carina/catalog.py`](../src/carina/catalog.py) |
+| Rook-Ceph / Garage; Lakekeeper + CNPG deployments | 🟡 **Manifests committed; needs a cluster to run.** The data-plane GitOps tree pins CloudNativePG (chart 0.29.0) with a **Tier-0 `lakekeeper-db` cluster** (WAL archiving + nightly base backups to S3, 30-day PITR), Lakekeeper (chart 0.11.0) on that database, and a dev-profile Garage (v2.3.0). Bring-up is two documented commands past `git push`. | [`platform/planes/data-plane/`](../platform/planes/data-plane/), [`platform/clusters/local/apps/data-plane/`](../platform/clusters/local/apps/data-plane/) |
 | SQLMesh + SQLGlot + Recce; Dagster; dlt | ⬜ **Not yet.** WAP semantics are in place so these swap in behind an existing behavior, not a new one. |
 | OTel → ClickStack; Argo CD as the only write path | 🟡 **Argo CD layout committed** (`platform/clusters/local/apps/`, app-of-apps, automated sync + prune). OTel wiring is Phase-0 cluster work. | [`platform/`](../platform/) |
 
@@ -22,9 +23,17 @@ Tracking the [roadmap's Phase 1](roadmap.md#phase-1--keel-months-05-the-spine-an
 |---|---|
 | A new data product ships end-to-end in **< 60 min, measured** | ✅ Demonstrated: `wages-nl` scaffold→live in **4.6 min**, recorded as `golden_path.ship` in the evidence chain |
 | Top tables queryable with **row-level parity green 30 consecutive days** | 🟡 Mechanic built (`carina parity` + streak-from-evidence); needs the dual-run environment to start the clock |
-| **Tier-0 restore drill passed** | ⬜ Requires the CNPG/Lakekeeper deployment (cluster profile) |
+| **Tier-0 restore drill passed** | 🟡 Backup manifests (CNPG WAL archiving + nightly base backup, 30-day PITR) and the [monthly drill runbook](runbooks/tier0-restore-drill.md) with its RTO/RPO scorecard are committed; the pass itself needs the cluster |
 
-## What shipped in this increment
+## What shipped in increment 2 (data plane)
+
+- `carina publish` — the lakehouse exported as **Apache Iceberg tables** (or plain Parquet without the extra), each table round-trip **parity-verified** on every publish; contract properties travel into the catalog
+- `carina catalog status` — catalog state asked of the catalog itself (Lakekeeper REST when configured, the local SQL catalog otherwise)
+- Data-plane GitOps manifests, pinned: CNPG operator 0.29.0, **Tier-0 `lakekeeper-db`** (2 instances, WAL archiving + nightly backups to S3, 30-day PITR), Lakekeeper chart 0.11.0 on CNPG, Garage v2.3.0 dev-profile object store
+- [Tier-0 restore drill runbook](runbooks/tier0-restore-drill.md) with the RTO/RPO scorecard and evidence-chain logging
+- 8 new tests (44 total) covering publish round-trips, schema evolution, and the REST client against a mocked Lakekeeper
+
+## What shipped in increment 1
 
 - `carina compile [--check]` — contract compiler v1 (5 artifact kinds per product)
 - `carina create data-product` + measured golden path (`--product` filters on every verb)

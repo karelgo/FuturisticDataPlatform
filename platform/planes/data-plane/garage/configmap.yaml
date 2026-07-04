@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: garage-config
+  namespace: data-plane
+data:
+  garage.toml: |
+    # Garage single-node dev profile (ADR-0003). NOT for production:
+    # replication_factor 1, static rpc_secret. Prod object storage is
+    # Rook-Ceph (S1) or provider S3 (S2).
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir = "/var/lib/garage/data"
+    db_engine = "sqlite"
+
+    replication_factor = 1
+
+    rpc_bind_addr = "[::]:3901"
+    rpc_public_addr = "127.0.0.1:3901"
+    # Dev-only static secret — regenerate for anything shared:
+    # openssl rand -hex 32
+    rpc_secret = "3e9abff1a95dbe8f34a223faa3a207d95b7c3ac0f0d0e4468fdbc4cb42f34ea5"
+
+    [s3_api]
+    s3_region = "garage"
+    api_bind_addr = "[::]:3900"
+    root_domain = ".s3.garage.localhost"
+
+    [admin]
+    api_bind_addr = "[::]:3903"
+
+  init.sh: |
+    #!/bin/sh
+    # One-time cluster init: layout, dev credentials, buckets.
+    # Run inside the pod:  kubectl exec -n data-plane garage-0 -- sh /etc/garage/init.sh
+    set -e
+    NODE=$(garage -c /etc/garage/garage.toml node id -q | cut -d@ -f1)
+    garage -c /etc/garage/garage.toml layout assign -z dev -c 10G "$NODE" || true
+    garage -c /etc/garage/garage.toml layout apply --version 1 || true
+    garage -c /etc/garage/garage.toml key import --yes \
+      "$GARAGE_ACCESS_KEY" "$GARAGE_SECRET_KEY" -n carina-dev || true
+    for b in carina-warehouse carina-backups; do
+      garage -c /etc/garage/garage.toml bucket create "$b" || true
+      garage -c /etc/garage/garage.toml bucket allow --read --write "$b" --key carina-dev
+    done
+    garage -c /etc/garage/garage.toml status

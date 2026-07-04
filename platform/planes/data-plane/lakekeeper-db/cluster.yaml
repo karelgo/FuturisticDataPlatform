@@ -1,0 +1,46 @@
+# Tier-0: the Lakekeeper metadata database. Losing this loses the map to
+# every Iceberg table — RPO ≤ 5 min / RTO ≤ 30 min (governance §8).
+# CNPG provides the sync replica, WAL archiving, and PITR that meet it.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: lakekeeper-db
+  namespace: data-plane
+spec:
+  instances: 2                       # local profile; prod: 3 across AZs
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.5
+  primaryUpdateStrategy: unsupervised
+
+  bootstrap:
+    initdb:
+      database: lakekeeper
+      owner: lakekeeper
+
+  # Prod (Clipper): make the replica synchronous so RPO→0 for commits.
+  # postgresql:
+  #   synchronous:
+  #     method: any
+  #     number: 1
+
+  storage:
+    size: 5Gi
+
+  # Tier-0 DR: continuous WAL archiving + base backups to the object store,
+  # 30-day PITR window. The restore drill is docs/runbooks/tier0-restore-drill.md
+  # — a backup never restored is a hypothesis, not a control.
+  # NOTE: in-tree barmanObjectStore is deprecated in favor of the barman-cloud
+  # CNPG-I plugin; migrate when bumping the operator past this pin.
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://carina-backups/lakekeeper-db
+      endpointURL: http://garage-s3.data-plane.svc.cluster.local:3900
+      s3Credentials:
+        accessKeyId:
+          name: garage-credentials
+          key: access-key
+        secretAccessKey:
+          name: garage-credentials
+          key: secret-key
+      wal:
+        compression: gzip
