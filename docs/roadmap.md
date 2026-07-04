@@ -2,6 +2,8 @@
 
 Four phases over ~24 months, each with a hard definition of done. The ODAP migration is woven through all phases — coexistence and dual-running, never a big bang. Phase names follow the ship: keel first, then sails, then crew, then the horizon.
 
+> This is the **product** roadmap (what ships, when). For the **engineering delivery & deployment** view — how to build and run this on Kubernetes on any cloud, enterprise-ready, starting from the reference implementation — see [implementation-plan.md](implementation-plan.md), which adds a **Phase 0 (Deployable MVP)** ahead of KEEL.
+
 ---
 
 ## Phase 1 — KEEL (months 0–5): the spine and the golden path

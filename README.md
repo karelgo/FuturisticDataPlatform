@@ -200,6 +200,7 @@ The full registry — every component, its role, and what it replaced from ODAP 
 | [docs/ai-native.md](docs/ai-native.md) | The three agents, semantic grounding, MCP governance, self-driving operations |
 | [docs/personas.md](docs/personas.md) | Day-1 / day-30 journeys for all five personas |
 | [docs/roadmap.md](docs/roadmap.md) | Four phases (KEEL → SAILS → CREW → HORIZON) incl. the ODAP migration path |
+| [docs/implementation-plan.md](docs/implementation-plan.md) | **How to deploy it: enterprise, Kubernetes-native, any-cloud** — shim→production map, K8s architecture, security/HA/DR/multi-tenancy, CI/CD, phased delivery, per-cloud notes |
 | [docs/risks-and-non-goals.md](docs/risks-and-non-goals.md) | The eight bets with mitigations; what CARINA deliberately does not do |
 | [docs/odap-comparison.md](docs/odap-comparison.md) | Kept / replaced / new — the full delta against ODAP |
 | [docs/adr/](docs/adr/) | Architecture Decision Records for every major choice |
