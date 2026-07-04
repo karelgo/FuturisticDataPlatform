@@ -10,6 +10,9 @@ This repository contains both the **master plan** (architecture, component selec
 
 ## 🚢 The Reference Implementation (runs on your laptop)
 
+> **▶ View it live:** [CARINA — the Dutch job market, on the web](https://claude.ai/code/artifact/20b2ac3c-67ce-4d46-b8a6-914ea71139fe) — a fully-interactive static export (dashboard, trust drawers, product page, and the evidence chain re-hashing itself in your browser). Rebuild it yourself with `python scripts/build_static.py` → [`dist/index.html`](dist/index.html), a single self-contained file with no backend.
+
+
 A single-node embodiment of the design: the data contract is the hub artifact, DuckDB is the compute lane, quality checks are **compiled from contracts** (never handwritten), every platform action lands in a **hash-chained evidence log**, and all consumption — the dashboard included — goes through a **governed semantic layer**. No raw SQL from consumers, ever.
 
 ```bash
