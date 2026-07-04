@@ -18,8 +18,8 @@ venv/
 
 # Node
 node_modules/
-dist/
 .astro/
+# note: /dist/index.html (the static web export) is intentionally committed
 
 # Terraform / IaC
 .terraform/
