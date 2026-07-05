@@ -16,7 +16,9 @@ RUN WHEEL=$(ls /tmp/*.whl) && pip install --no-cache-dir "${WHEEL}[auth]" && rm 
 
 WORKDIR /app
 COPY products ./products
-RUN mkdir -p /app/data && chown -R carina:carina /app
+# Group 0 ownership + group-write: runs as uid 10001 on vanilla Kubernetes
+# and under OpenShift's restricted SCC (arbitrary UID, GID 0) unchanged.
+RUN mkdir -p /app/data && chown -R carina:0 /app && chmod -R g+rwX /app
 ENV CARINA_ROOT=/app
 
 USER carina

@@ -35,6 +35,11 @@ ingress:
   host: carina.local
   tls: []
 
+# OpenShift Route (use instead of ingress there; see values-openshift.yaml).
+route:
+  enabled: false
+  host: ""   # empty = let OpenShift generate one
+
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 10001
