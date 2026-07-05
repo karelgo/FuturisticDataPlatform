@@ -6,11 +6,11 @@ import json
 import threading
 
 import duckdb
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, evidence, insights, lanes, quality, semantic
+from . import auth, authz, config, evidence, insights, lanes, quality, semantic
 from .contracts import load_products
 
 app = FastAPI(title="CARINA — laptop profile", version="0.1.0")
@@ -32,6 +32,19 @@ def load_state():
     products = load_products()
     models, metrics = semantic.load_semantic(products)
     return products, models, metrics
+
+
+def get_actor(authorization: str | None = Header(default=None)) -> authz.Actor:
+    """One identity path for every caller — human, agent, or service."""
+    try:
+        return auth.actor_from_authorization(authorization)
+    except auth.AuthError as e:
+        raise HTTPException(401, str(e), headers={"WWW-Authenticate": "Bearer"})
+
+
+@app.get("/api/whoami")
+def whoami(actor: authz.Actor = Depends(get_actor)):
+    return {"actor": actor.as_dict(), "auth_mode": auth.mode()}
 
 
 @app.get("/api/overview")
@@ -184,12 +197,28 @@ def metric_query(
     metric_id: str,
     dimension: str | None = Query(default=None),
     since: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    actor: authz.Actor = Depends(get_actor),
 ):
     with _lock:
         c = con()
-        _, models, metrics = load_state()
+        products, models, metrics = load_state()
+        if metric_id not in metrics:
+            raise HTTPException(404, f"Unknown metric: {metric_id}")
+        # Access to a metric is access to every contract behind its model —
+        # the policy compiled from those contracts decides, and denies are
+        # evidence-logged (the laptop stand-in for OPA decision logs).
+        model = models[metrics[metric_id].model]
+        contracts = [ct for p in products for ct in p.contracts if ct.id in model.contracts]
+        allowed, decisions = authz.decide_all(contracts, actor, "read", con=c)
+        if not allowed:
+            denied = [d for d in decisions if not d.allow]
+            raise HTTPException(403, {
+                "denied": [d.as_dict() for d in denied],
+                "hint": "access is contract-governed; see the product page",
+            })
         try:
-            return semantic.query_metric(c, models, metrics, metric_id, dimension, since)
+            return semantic.query_metric(c, models, metrics, metric_id, dimension,
+                                         since, actor=actor.subject)
         except KeyError as e:
             raise HTTPException(404, str(e))
 

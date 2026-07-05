@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir build && python -m build --wheel
 FROM python:3.11-slim
 RUN useradd --system --uid 10001 --create-home carina
 COPY --from=build /src/dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm -f /tmp/*.whl
+RUN WHEEL=$(ls /tmp/*.whl) && pip install --no-cache-dir "${WHEEL}[auth]" && rm -f /tmp/*.whl
 
 WORKDIR /app
 COPY products ./products

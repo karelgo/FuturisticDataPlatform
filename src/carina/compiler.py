@@ -20,6 +20,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from . import config
 from .contracts import Contract, Product
 
 # Built-in period parsing: CBS period codes look like 2003JJ00 (year),
@@ -189,12 +190,18 @@ def compile_policy_rego(contract: Contract) -> str:
             "",
         ]
     if masks:
-        lines += ["# Columns masked unless the subject owns the contract.", ""]
+        lines += [
+            "owner_member if {",
+            f'\tinput.subject.groups[_] == "{contract.owner}"',
+            "}",
+            "",
+            "# Columns masked unless the subject owns the contract.",
+        ]
         for m in masks:
             lines += [
                 "mask contains col if {",
                 f'\tcol := {{"column": "{m["column"]}", "treatment": "{m.get("treatment", "null")}"}}',
-                f'\tnot input.subject.groups[_] == "{contract.owner}"',
+                "\tnot owner_member",
                 "}",
                 "",
             ]
@@ -346,6 +353,76 @@ def write_artifacts(product: Product) -> dict:
     return {"product": product.id, "artifacts": sorted(artifacts),
             "changed": sorted(changed), "unchanged": sorted(unchanged),
             "removed": removed, "digest": digest}
+
+
+def compile_policy_bundle(products: list[Product]) -> dict[str, str]:
+    """The OPA bundle tree (implementation-plan layout: policies/): every
+    generated Rego policy plus the kustomization that ships them to the
+    in-cluster OPA as one ConfigMap. Git → Argo CD → OPA; no other path."""
+    artifacts: dict[str, str] = {}
+    rego_paths = []
+    for product in products:
+        for ct in product.contracts:
+            rel = f"generated/{product.id}/{ct.id}.rego"
+            artifacts[rel] = compile_policy_rego(ct)
+            rego_paths.append(rel)
+    files = "\n".join(f"      - {p}" for p in sorted(rego_paths))
+    artifacts["kustomization.yaml"] = (
+        f"# {GENERATED_HEADER}\n"
+        "# Ships every generated contract policy to the trust-plane OPA as one\n"
+        "# ConfigMap (see platform/planes/trust-plane/opa/).\n"
+        "apiVersion: kustomize.config.k8s.io/v1beta1\n"
+        "kind: Kustomization\n"
+        "namespace: trust-plane\n"
+        "generatorOptions:\n"
+        "  disableNameSuffixHash: true\n"
+        "configMapGenerator:\n"
+        "  - name: opa-policies\n"
+        "    files:\n"
+        f"{files}\n"
+    )
+    return artifacts
+
+
+def policies_dir() -> Path:
+    return config.ROOT / "policies"
+
+
+def write_policy_bundle(products: list[Product]) -> dict:
+    artifacts = compile_policy_bundle(products)
+    out = policies_dir()
+    changed = []
+    for rel, content in artifacts.items():
+        path = out / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists() or path.read_text() != content:
+            path.write_text(content)
+            changed.append(rel)
+    removed = []
+    gen = out / "generated"
+    if gen.exists():
+        for existing in sorted(gen.rglob("*.rego")):
+            rel = str(existing.relative_to(out))
+            if rel not in artifacts:
+                existing.unlink()
+                removed.append(rel)
+    return {"artifacts": sorted(artifacts), "changed": changed, "removed": removed}
+
+
+def check_policy_bundle(products: list[Product]) -> list[str]:
+    artifacts = compile_policy_bundle(products)
+    out = policies_dir()
+    stale = [
+        rel for rel, content in artifacts.items()
+        if not (out / rel).exists() or (out / rel).read_text() != content
+    ]
+    gen = out / "generated"
+    if gen.exists():
+        for existing in sorted(gen.rglob("*.rego")):
+            rel = str(existing.relative_to(out))
+            if rel not in artifacts:
+                stale.append(rel + " (orphaned)")
+    return stale
 
 
 def check_artifacts(product: Product) -> list[str]:

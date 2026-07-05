@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/karelgo/carina
-  tag: "0.3.0"
+  tag: "0.4.0"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -17,6 +17,13 @@ persistence:
 
 # Attach the Trino lane by setting e.g. "trino.compute-plane:8080/iceberg/carina".
 trinoDsn: ""
+
+# Identity (ADR-0009). mode "none" is the open laptop profile; "oidc"
+# requires a Bearer token on the data path, validated against the issuer.
+auth:
+  mode: none
+  oidcIssuer: ""     # e.g. http://keycloak-http.trust-plane.svc/auth/realms/carina
+  oidcAudience: carina-portal
 
 resources:
   requests: {cpu: 250m, memory: 512Mi}

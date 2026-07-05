@@ -1,6 +1,6 @@
 [project]
 name = "carina-platform"
-version = "0.3.0"
+version = "0.4.0"
 description = "CARINA reference implementation (laptop profile): contract-driven lakehouse, semantic layer, evidence plane, and portal UI"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -13,9 +13,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pyjwt>=2.8", "cryptography>=42"]
 trino = ["trino>=0.330"]
 iceberg = ["pyiceberg[sql-sqlite]>=0.11"]
+auth = ["pyjwt>=2.8", "cryptography>=42"]
 
 [project.scripts]
 carina = "carina.cli:main"

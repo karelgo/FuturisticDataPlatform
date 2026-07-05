@@ -30,6 +30,14 @@ spec:
             - name: CARINA_TRINO_DSN
               value: {{ .Values.trinoDsn | quote }}
             {{- end }}
+            {{- if ne .Values.auth.mode "none" }}
+            - name: CARINA_AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            - name: CARINA_OIDC_ISSUER
+              value: {{ .Values.auth.oidcIssuer | quote }}
+            - name: CARINA_OIDC_AUDIENCE
+              value: {{ .Values.auth.oidcAudience | quote }}
+            {{- end }}
           readinessProbe:
             httpGet: {path: /api/lanes, port: http}
             initialDelaySeconds: 5

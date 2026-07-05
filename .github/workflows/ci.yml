@@ -15,7 +15,13 @@ jobs:
           python-version: "3.11"
       - name: Install
         run: pip install -e .[dev]
-      - name: Unit tests
+      - name: Install OPA (policy conformance suite)
+        run: |
+          curl -fsSL -o /usr/local/bin/opa \
+            https://github.com/open-policy-agent/opa/releases/download/v1.18.2/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+          opa version
+      - name: Unit tests (includes Rego/Python policy conformance)
         run: pytest -q
       - name: Contract gate — compiled artifacts must not drift
         run: carina compile --check

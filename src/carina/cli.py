@@ -12,9 +12,14 @@ import sys
 
 import duckdb
 
-from . import catalog, config, evidence, ingest, lanes, parity, quality, scaffold, transform, warehouse
-from .compiler import check_artifacts, write_artifacts
-from .contracts import load_products
+from . import authz, catalog, config, evidence, ingest, lanes, parity, quality, scaffold, transform, warehouse
+from .compiler import (
+    check_artifacts,
+    check_policy_bundle as compiler_check_bundle,
+    write_artifacts,
+    write_policy_bundle,
+)
+from .contracts import all_contracts, load_products
 
 
 def _connect() -> duckdb.DuckDBPyConnection:
@@ -86,14 +91,17 @@ def cmd_compile(args) -> int:
     if args.check:
         stale = {p.id: check_artifacts(p) for p in products}
         stale = {pid: paths for pid, paths in stale.items() if paths}
-        if stale:
+        bundle_stale = compiler_check_bundle(load_products())
+        if stale or bundle_stale:
             print("✗ compiled artifacts are stale — run `carina compile` and commit:")
             for pid, paths in stale.items():
                 for path in paths:
                     print(f"   {pid}: compiled/{path}")
+            for path in bundle_stale:
+                print(f"   policies/{path}")
             return 1
         print("→ compiled artifacts up to date for "
-              f"{len(products)} product(s)")
+              f"{len(products)} product(s) (+ policy bundle)")
         return 0
     con = _connect()
     for p in products:
@@ -105,6 +113,11 @@ def cmd_compile(args) -> int:
         print(f"→ {p.id}: {len(r['artifacts'])} artifacts compiled "
               f"({len(r['changed'])} changed, {len(r['removed'])} removed) → "
               f"{p.path.relative_to(config.ROOT) / 'compiled'}")
+    # The OPA bundle spans all products, regardless of any --product filter.
+    b = write_policy_bundle(load_products())
+    if b["changed"] or b["removed"]:
+        print(f"→ policy bundle: {len(b['artifacts'])} files "
+              f"({len(b['changed'])} changed, {len(b['removed'])} removed) → policies/")
     return 0
 
 
@@ -170,6 +183,31 @@ def cmd_parity(args) -> int:
     print(f"   green streak: {s['green_runs']} run(s) over {s['green_days']} day(s) "
           f"— gate at {s['target_days']} days: {'PASSED' if s['gate_passed'] else 'open'}")
     return 0 if r["green"] else 1
+
+
+def cmd_authz(args) -> int:
+    if args.action != "simulate":
+        raise SystemExit("error: only 'simulate' is supported")
+    contracts = [ct for ct in all_contracts()
+                 if ct.silver_table == args.table or ct.id == args.table]
+    if not contracts:
+        raise SystemExit(f"error: no contract governs '{args.table}'")
+    actor = authz.Actor(
+        subject=args.subject,
+        groups=[g for g in (args.groups or "").split(",") if g],
+        authenticated=not args.anonymous,
+    )
+    rc = 0
+    for ct in contracts:
+        d = authz.decide(ct, actor, args.action_verb)
+        mark = "ALLOW" if d.allow else "DENY"
+        print(f"→ {ct.id} / {ct.silver_table} [{args.action_verb}]: {mark} — {d.reason}")
+        masks = authz.masks_for(ct, actor)
+        if masks:
+            print(f"   masked columns: {', '.join(m['column'] + ':' + m['treatment'] for m in masks)}")
+        if not d.allow:
+            rc = 1
+    return rc
 
 
 def cmd_publish(args) -> int:
@@ -264,6 +302,14 @@ def main() -> None:
     cat = sub.add_parser("catalog", help="Catalog seam state (Lakekeeper or local)")
     cat.add_argument("action", choices=["status"])
 
+    az = sub.add_parser("authz", help="Evaluate contract policy for an actor")
+    az.add_argument("action", choices=["simulate"])
+    az.add_argument("table", help="Silver table or contract id")
+    az.add_argument("--subject", default="someone@example.org")
+    az.add_argument("--groups", help="Comma-separated group memberships")
+    az.add_argument("--anonymous", action="store_true", help="Unauthenticated caller")
+    az.add_argument("--action-verb", default="read", choices=["read", "write"])
+
     sub.add_parser("lanes", help="Show compute lanes and router state")
 
     serve = sub.add_parser("serve", help="Serve the portal UI + API")
@@ -275,7 +321,7 @@ def main() -> None:
         "ingest": cmd_ingest, "transform": cmd_transform, "check": cmd_check,
         "run": cmd_run, "serve": cmd_serve, "compile": cmd_compile,
         "create": cmd_create, "parity": cmd_parity, "lanes": cmd_lanes,
-        "publish": cmd_publish, "catalog": cmd_catalog,
+        "publish": cmd_publish, "catalog": cmd_catalog, "authz": cmd_authz,
     }[args.cmd](args)
     sys.exit(rc)
 

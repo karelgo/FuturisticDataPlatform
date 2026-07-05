@@ -30,6 +30,7 @@ carina parity gold_a gold_b --key date     # dual-run migration gate with green-
 carina lanes                                # compute-lane router state
 carina publish                              # export as Apache Iceberg tables, parity-verified
 carina catalog status                       # what the catalog (Lakekeeper or local) serves
+carina authz simulate silver_cao_wages --groups analysts@carina.local   # policy answers
 ```
 
 | | |
@@ -64,6 +65,7 @@ The dashboard's **prepared analysis** is computed from the data (deterministical
 | **Golden path, measured** | `carina create data-product` scaffold → first green run records `golden_path.ship`; **`wages-nl` shipped in 4.6 min** against the 60-min KEEL target |
 | **Migration parity gate** | `carina parity a b --key …` — row-level dual-run diffs with the 30-day green streak computed from the evidence chain |
 | **Iceberg warehouse + catalog seam** (ADR-0001/0002) | `carina publish` writes real Apache Iceberg tables (local SQL catalog, or **Lakekeeper** via `CARINA_CATALOG_URI`), contract metadata in table properties, every publish round-trip parity-verified |
+| **Identity & policy fabric** (ADR-0009) | OIDC Bearer auth on the API (Keycloak JWKS; agents carry `carina_kind: agent`), contract-governed data path with evidence-logged denies, and a **Rego/Python policy conformance suite** — the generated OPA policy and the in-process enforcer must agree, verified in CI |
 | Experience plane | Portal, product page with lineage DAG, flagship dashboard, evidence explorer; light + dark; table-view twin on every chart |
 
 `src/carina/` is the platform (~2,000 lines of Python, 36 tests), `products/` holds two live products (`labour-market-nl`, `wages-nl`), `src/carina/ui/` is the portal (no build step; ECharts vendored). Phase 1 build status: [docs/keel-status.md](docs/keel-status.md).

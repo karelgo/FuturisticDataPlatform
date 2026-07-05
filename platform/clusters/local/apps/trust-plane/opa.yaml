@@ -1,0 +1,38 @@
+# OPA + the generated policy bundle. Two sources, one truth:
+# the ConfigMap comes from policies/ (kustomize, written by `carina compile`),
+# the Deployment from the trust-plane manifests. Git → Argo → OPA.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opa-policies
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/karelgo/FuturisticDataPlatform
+    targetRevision: HEAD
+    path: policies
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trust-plane
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opa
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/karelgo/FuturisticDataPlatform
+    targetRevision: HEAD
+    path: platform/planes/trust-plane/opa
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trust-plane
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]
