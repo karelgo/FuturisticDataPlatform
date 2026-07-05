@@ -1,0 +1,90 @@
+# Release engineering (implementation-plan §4): every release is a signed,
+# SBOM'd, scanned, multi-arch OCI image plus the Helm chart as an OCI
+# artifact — published to ghcr from a version tag. Nothing floats on latest;
+# clusters consume exactly what this workflow attested.
+#
+# Cut a release:  git tag v0.6.0 && git push origin v0.6.0
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write        # release notes
+  packages: write        # ghcr push
+  id-token: write        # cosign keyless signing (GitHub OIDC)
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/carina
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push multi-arch image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.v.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: SBOM (syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: carina-${{ steps.v.outputs.version }}-sbom.spdx.json
+
+      - name: Vulnerability scan (trivy) — CRITICALs block the release
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Sign image + attest SBOM (cosign keyless)
+        uses: sigstore/cosign-installer@v3
+      - run: |
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign attest --yes --predicate sbom.spdx.json --type spdxjson \
+            "${IMAGE}@${DIGEST}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - name: Publish Helm chart as OCI artifact
+        run: |
+          helm package charts/carina \
+            --version "${VERSION}" --app-version "${VERSION}"
+          helm push "carina-${VERSION}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+
+      - name: GitHub release with SBOM attached
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: sbom.spdx.json

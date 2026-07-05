@@ -12,7 +12,7 @@ import sys
 
 import duckdb
 
-from . import authz, catalog, config, conformance, evidence, ingest, lanes, parity, quality, scaffold, transform, warehouse
+from . import anchoring, authz, catalog, config, conformance, evidence, ingest, lanes, parity, quality, scaffold, transform, warehouse
 from .compiler import (
     check_artifacts,
     check_policy_bundle as compiler_check_bundle,
@@ -260,6 +260,32 @@ def cmd_lanes(_args) -> int:
     return 0
 
 
+def cmd_evidence(args) -> int:
+    con = _connect()
+    if args.action == "anchor":
+        r = anchoring.anchor(con)
+        if r["anchored"] == 0:
+            print(f"→ nothing to anchor (chain anchored through seq {r['seq_through']})")
+        else:
+            a = r["anchor"]
+            print(f"→ anchored {r['anchored']} records (seq {a['seq_from']}–{a['seq_to']}) "
+                  f"→ {a['segment']}")
+            print(f"   anchor hash: {a['anchor_hash']}")
+        return 0
+    # verify (also the default for `status`)
+    chain = evidence.verify(con)
+    anchors = anchoring.verify_anchors(con)
+    ok = chain["ok"] and anchors["ok"]
+    print(f"→ chain: {chain.get('records', 0)} records, "
+          f"{'OK' if chain['ok'] else 'BROKEN at seq ' + str(chain.get('broken_at'))}")
+    print(f"→ anchors: {anchors['anchors']} anchor(s), anchored through seq "
+          f"{anchors['anchored_through']} of {anchors['head_seq']} "
+          f"({anchors['unanchored']} unanchored) — {'OK' if anchors['ok'] else 'PROBLEMS'}")
+    for p in anchors["problems"]:
+        print(f"   ✗ {p}")
+    return 0 if ok else 1
+
+
 def cmd_conformance(_args) -> int:
     con = _connect()
     s = conformance.run_suite(con)
@@ -341,6 +367,9 @@ def main() -> None:
     sub.add_parser("conformance",
                    help="Run the cross-lane conformance corpus on all attached lanes")
 
+    ev = sub.add_parser("evidence", help="Anchor or verify the evidence chain")
+    ev.add_argument("action", choices=["anchor", "verify", "status"])
+
     serve = sub.add_parser("serve", help="Serve the portal UI + API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8899)
@@ -356,6 +385,7 @@ def main() -> None:
         "create": cmd_create, "parity": cmd_parity, "lanes": cmd_lanes,
         "publish": cmd_publish, "catalog": cmd_catalog, "authz": cmd_authz,
         "flight": cmd_flight, "conformance": cmd_conformance,
+        "evidence": cmd_evidence,
     }[args.cmd](args)
     sys.exit(rc)
 

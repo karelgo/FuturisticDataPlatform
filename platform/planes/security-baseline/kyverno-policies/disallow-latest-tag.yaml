@@ -1,0 +1,22 @@
+# Nothing floats on :latest (implementation-plan §4: components pinned per
+# release train). Audit first; Enforce once third-party charts are confirmed
+# clean on the target cluster.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+spec:
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [data-plane, trust-plane, compute-plane, experience-plane]
+      validate:
+        failureAction: Audit   # → Enforce after burn-in
+        message: "Images must be pinned — ':latest' or untagged images are not allowed."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest & *:*"

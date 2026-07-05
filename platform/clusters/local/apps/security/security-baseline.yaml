@@ -1,0 +1,21 @@
+# Plane namespaces (with Pod Security Standards labels) + default-deny
+# NetworkPolicies. Wave -1: the boundary exists before workloads sync into it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: security-baseline
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/karelgo/FuturisticDataPlatform
+    targetRevision: HEAD
+    path: platform/planes/security-baseline
+    directory:
+      exclude: "kyverno-policies/*"
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}

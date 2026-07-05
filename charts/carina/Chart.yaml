@@ -6,5 +6,5 @@ description: >
   profile (implementation-plan Phase 0); production planes (Lakekeeper, Trino,
   Keycloak, …) attach as sibling charts per plane in later phases.
 type: application
-version: 0.5.0
-appVersion: "0.5.0"
+version: 0.6.0
+appVersion: "0.6.0"

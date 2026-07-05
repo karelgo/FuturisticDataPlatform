@@ -1,0 +1,39 @@
+# oauth2-proxy — browser SSO in front of the portal SPA. Users hit the proxy
+# (4180), authenticate against the carina realm, and their access token is
+# forwarded as the Authorization header — so the portal API sees the same
+# Bearer identity a CLI or agent would present. Chart 10.7.0 = 7.15.3 (pinned).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oauth2-proxy
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://oauth2-proxy.github.io/manifests
+    chart: oauth2-proxy
+    targetRevision: 10.7.0
+    helm:
+      valuesObject:
+        config:
+          clientID: carina-portal-proxy
+          clientSecret: dev-proxy-secret     # DEV ONLY — ExternalSecret in prod
+          # openssl rand -base64 32 | head -c 32 | base64  (DEV ONLY)
+          cookieSecret: "OFRJZDh0NWk2UDJqcVU3d1lXbXA1ZUxrc0M0ZnJHOXo="
+        extraArgs:
+          provider: keycloak-oidc
+          # keycloakx serves under /auth by chart default; adjust per install.
+          oidc-issuer-url: http://keycloak-keycloakx-http.trust-plane.svc.cluster.local/auth/realms/carina
+          code-challenge-method: S256
+          email-domain: "*"
+          upstream: http://carina.experience-plane.svc.cluster.local:8899
+          skip-provider-button: "true"
+          pass-authorization-header: "true"   # portal API gets the user's Bearer
+          set-authorization-header: "true"
+          cookie-secure: "false"              # DEV (no TLS on k3d); true behind cert-manager
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: experience-plane
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]

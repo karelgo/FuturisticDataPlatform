@@ -29,6 +29,15 @@ Tracking the [roadmap's Phase 1](roadmap.md#phase-1--keel-months-05-the-spine-an
 | **Conformance suite running nightly** | ✅ Armed: [nightly workflow](../.github/workflows/conformance.yml) rebuilds from live sources and runs the corpus; becomes cross-engine the moment a Trino DSN is configured |
 | **Tier-0 restore drill passed** | 🟡 Backup manifests (CNPG WAL archiving + nightly base backup, 30-day PITR) and the [monthly drill runbook](runbooks/tier0-restore-drill.md) with its RTO/RPO scorecard are committed; the pass itself needs the cluster |
 
+## What shipped in increment 5 (enterprise hardening — implementation-plan §3)
+
+- **Release engineering**: tagging `v*` now produces a **multi-arch image on ghcr** with an SPDX **SBOM** (syft), a **trivy scan that blocks on CRITICALs**, **cosign keyless signing + SBOM attestation**, and the Helm chart published as an **OCI artifact** — clusters consume exactly what the workflow attested
+- **Evidence anchoring** (`carina evidence anchor|verify|status`): not-yet-anchored evidence exports as canonical JSONL segments into the warehouse (a different failure domain than the lakehouse file), covered by a hash-chained anchor log; verification cross-checks segments, anchors, and the database against each other — losing the DB, editing a segment, or rewriting history are all detectable. Ships as an optional CronJob in the chart
+- **Chart hardening**: restricted-PSS-compliant pod/container contexts (non-root, seccomp, no privilege escalation, **read-only rootfs** with explicit data/tmp volumes, all capabilities dropped), `extraEnv` passthrough, and optional CronJobs for scheduled `carina run` + evidence anchoring
+- **Security baseline** (`platform/planes/security-baseline/`): plane namespaces with **Pod Security Standards** labels, **default-deny NetworkPolicies** with every cross-plane flow enumerated and justified, **Kyverno** (3.8.1) with signed-image verification (identity = the release workflow) and no-`:latest` policies in Audit-first mode, **cert-manager** (v1.20.3), **External Secrets Operator** (2.7.0) with the documented OpenBao migration off dev-static secrets, and **oauth2-proxy** (10.7.0) giving the portal SPA browser SSO that forwards the user's Bearer token to the API
+- **Repo hygiene**: SECURITY.md (private disclosure, response SLAs, cosign verify instructions, honest dev-only tradeoffs), CODEOWNERS on the trust surfaces, Renovate keeping the pinned stack from rotting (Argo CD chart pins included)
+- 6 new tests (87 passing + 4 CI-only)
+
 ## What shipped in increment 4 (compute plane)
 
 - **Arrow Flight front door** (`carina flight`): metrics in, Arrow tables out, provenance in the schema metadata; same OIDC badge and contract policy as REST, verified by in-process Flight-client tests

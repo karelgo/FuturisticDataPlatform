@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/karelgo/carina
-  tag: "0.5.0"
+  tag: "0.6.0"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -39,3 +39,29 @@ podSecurityContext:
   runAsNonRoot: true
   runAsUser: 10001
   fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# Restricted PSS-compliant container hardening; the rootfs is read-only —
+# only /app/data (the lakehouse volume) and /tmp are writable.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# Extra environment (e.g. CARINA_CATALOG_URI, CARINA_WAREHOUSE).
+extraEnv: []
+
+# Scheduled platform jobs. Both mount the same data volume as the server —
+# with an RWO PVC they colocate on the server's node; use RWX or S3-backed
+# CARINA_WAREHOUSE for multi-node.
+jobs:
+  # Rebuild bronze/silver/gold from the contracted sources.
+  refresh:
+    enabled: false
+    schedule: "0 6 * * *"
+  # Anchor the evidence chain into the warehouse (ADR-0010 durability).
+  anchor:
+    enabled: false
+    schedule: "30 * * * *"

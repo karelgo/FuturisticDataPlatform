@@ -33,6 +33,7 @@ carina catalog status                       # what the catalog (Lakekeeper or lo
 carina authz simulate silver_cao_wages --groups analysts@carina.local   # policy answers
 carina conformance                          # cross-lane corpus, cell-diffed per attached lane
 carina flight                               # Arrow Flight front door (metrics in, Arrow out)
+carina evidence anchor                      # export + anchor the audit chain outside the DB
 ```
 
 | | |
@@ -61,7 +62,7 @@ The dashboard's **prepared analysis** is computed from the data (deterministical
 | **Contract compiler v1** (Phase 1) | `carina compile` → silver DDL, checks SQL, **generated OPA Rego**, **OpenFGA tuples**, **catalog entry** per contract, committed under `products/*/compiled/`; `--check` is the CI drift gate |
 | Quality compiled, never handwritten | `carina check` — checks generated from contract `quality:` blocks, results in DuckDB + evidence |
 | **Write–Audit–Publish** (ADR-0005) | Gold transforms stage in a `wap` schema, compiled audits gate the publish; red audits leave production untouched |
-| Evidence plane (ADR-0010) | Append-only SHA-256 hash chain over every ingest/transform/check/query; verified live in the UI |
+| Evidence plane (ADR-0010) | Append-only SHA-256 hash chain over every ingest/transform/check/query; verified live in the UI; **anchored** into the warehouse as hash-chained segments so history survives the database and tampering on either side is detectable |
 | Semantic layer as only path (ADR-0008) | `semantic/metrics.yaml` → compiled SQL with provenance; the UI never sends SQL |
 | **Lane routing v1** (ADR-0004) | A real router on every semantic query: `duckdb-local` + a `trino` lane (`CARINA_TRINO_DSN`, SQL transpiled per lane by **SQLGlot**), estimate-based escalation, full routing decision in provenance; **Arrow Flight front door** serving metrics as Arrow tables with provenance in the schema metadata |
 | **Cross-Lane Conformance Suite v1** (ADR-0004) | Canonical dialect-drift corpus run on every attached lane, cell-diffed against the DuckDB baseline, evidence-logged, **nightly in CI** |

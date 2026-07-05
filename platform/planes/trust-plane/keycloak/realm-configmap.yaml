@@ -59,6 +59,36 @@ data:
           ]
         },
         {
+          "clientId": "carina-portal-proxy",
+          "name": "oauth2-proxy in front of the portal (browser SSO)",
+          "publicClient": false,
+          "standardFlowEnabled": true,
+          "secret": "dev-proxy-secret",
+          "redirectUris": ["*"],
+          "protocolMappers": [
+            {
+              "name": "groups",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-group-membership-mapper",
+              "config": {
+                "claim.name": "groups",
+                "full.path": "false",
+                "access.token.claim": "true",
+                "id.token.claim": "true"
+              }
+            },
+            {
+              "name": "audience",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "config": {
+                "included.client.audience": "carina-portal",
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
           "clientId": "carina-analyst-agent",
           "name": "Analyst agent (service account)",
           "publicClient": false,

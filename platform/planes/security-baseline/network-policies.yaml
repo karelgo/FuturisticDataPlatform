@@ -1,0 +1,269 @@
+# Default-deny per plane, then explicit allowances — a baseline to adapt,
+# not a finished perimeter. Every allowance states its reason.
+#
+# Conventions: DNS egress is always allowed; traffic within a plane is
+# allowed (the plane is the trust boundary at this stage); cross-plane
+# flows are enumerated one by one.
+
+# ---- data-plane -------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: data-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: data-plane
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: []
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-plane
+  namespace: data-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+---
+# Lakekeeper (8181) + Garage S3 (3900) serve the other planes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-catalog-and-s3-consumers
+  namespace: data-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - {key: carina.io/plane, operator: In, values: [compute, experience, trust]}
+      ports:
+        - {protocol: TCP, port: 8181}
+        - {protocol: TCP, port: 3900}
+
+# ---- trust-plane ------------------------------------------------------------
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: trust-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: trust-plane
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: []
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-plane
+  namespace: trust-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+---
+# Every plane authenticates (Keycloak), asks policy questions (OPA), and
+# checks relationships (OpenFGA).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-identity-consumers
+  namespace: trust-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - {key: carina.io/plane, operator: Exists}
+      ports:
+        - {protocol: TCP, port: 8080}   # Keycloak / OpenFGA
+        - {protocol: TCP, port: 8181}   # OPA
+---
+# CNPG backups: keycloak-db / openfga-db archive WAL to Garage in data-plane.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backup-to-s3
+  namespace: trust-plane
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {carina.io/plane: data}
+      ports:
+        - {protocol: TCP, port: 3900}
+
+# ---- compute-plane ----------------------------------------------------------
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: compute-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: compute-plane
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: []
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-plane
+  namespace: compute-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+---
+# Trino reads the catalog + object store; the router (experience) queries Trino.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-lanes
+  namespace: compute-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {carina.io/plane: experience}
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {carina.io/plane: data}
+      ports:
+        - {protocol: TCP, port: 8181}
+        - {protocol: TCP, port: 3900}
+
+# ---- experience-plane -------------------------------------------------------
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: experience-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: experience-plane
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: []
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-plane
+  namespace: experience-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+---
+# The portal is the user-facing surface: accept cluster-internal ingress on
+# the proxy (4180) and API (8899); reach the trust plane (OIDC/policy), the
+# data plane (catalog/S3), compute (Trino), and the public internet on 443
+# (contracted open-data sources — CBS StatLine).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-portal
+  namespace: experience-plane
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - {protocol: TCP, port: 4180}
+        - {protocol: TCP, port: 8899}
+        - {protocol: TCP, port: 8815}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchExpressions:
+              - {key: carina.io/plane, operator: In, values: [data, trust, compute]}
+    - to: []
+      ports:
+        - {protocol: TCP, port: 443}
