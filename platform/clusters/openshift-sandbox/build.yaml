@@ -9,6 +9,11 @@ metadata:
   name: carina
   labels:
     app.kubernetes.io/name: carina
+spec:
+  # Lets plain Deployments reference "carina:0.6.0" and have OpenShift
+  # resolve it to this ImageStream — keeps deploy.yaml namespace-agnostic.
+  lookupPolicy:
+    local: true
 ---
 apiVersion: build.openshift.io/v1
 kind: BuildConfig

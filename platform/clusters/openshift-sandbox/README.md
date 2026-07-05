@@ -17,28 +17,33 @@ a full trial/ROSA cluster will reuse.
    login command* → grab the `oc login --token=sha256~… --server=https://api.…`
    line. Tokens last ~24 h.
 
-## Deploy (four commands)
+## Deploy — nothing but `oc` needed (works in the sandbox **web terminal**)
+
+Open the web terminal (`>_` icon, top bar of the sandbox console) — or any
+shell where you've run the `oc login` command — and paste:
 
 ```bash
-oc login --token=sha256~REDACTED --server=https://api.sandbox-....openshiftapps.com:6443
+BASE=https://raw.githubusercontent.com/karelgo/FuturisticDataPlatform/claude/futuristic-data-platform-phase-1-vn1ij2/platform/clusters/openshift-sandbox
 
-# 1. Build the image on the cluster from this repo (buildah, ~3–5 min):
-oc apply -f platform/clusters/openshift-sandbox/build.yaml
+# 1. Build the image ON the cluster from this repo (buildah, ~3–5 min):
+oc apply -f $BASE/build.yaml
 oc start-build carina --follow
 
-# 2. Install the chart with the OpenShift overlay (SCC-safe contexts + Route):
-helm install carina charts/carina \
-  -f charts/carina/values-openshift.yaml \
-  --set image.repository=image-registry.openshift-image-registry.svc:5000/$(oc project -q)/carina \
-  --set image.tag=0.6.0
+# 2. Deploy (pre-rendered from the chart with the OpenShift overlay):
+oc apply -f $BASE/deploy.yaml
+oc wait --for=condition=available deploy/carina --timeout=300s
 
 # 3. Build the lakehouse from the live CBS sources, inside the pod:
-oc wait --for=condition=available deploy/carina --timeout=180s
 oc exec deploy/carina -- carina run
 
-# 4. Open the portal:
+# 4. The portal URL:
 echo "https://$(oc get route carina -o jsonpath='{.spec.host}')"
 ```
+
+`deploy.yaml` is generated (`helm template … -f values-openshift.yaml`) so no
+helm or git clone is needed cluster-side; with helm available, the equivalent
+is `helm install carina charts/carina -f charts/carina/values-openshift.yaml
+--set image.repository=carina --set image.tag=0.6.0`.
 
 `/api/whoami`, the dashboard, trust drawers, lineage, and the evidence
 explorer are all live at that URL. Optional extras:
