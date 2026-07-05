@@ -120,17 +120,42 @@ class LaneRouter:
         rows = self.con.execute(sql, params or []).fetchall()
         return rows, decision
 
-    def _execute_trino(self, sql: str, params: list | None) -> list:
-        import trino  # optional dependency: pip install trino
+    def run_on_lane(self, lane_id: str, sql: str, params: list | None = None) -> list:
+        """Run one query on one specific lane — the conformance suite's hook.
+        No routing, no fallback: a broken lane must fail loudly here."""
+        if lane_id == "duckdb-local":
+            return self.con.execute(sql, params or []).fetchall()
+        if lane_id == "trino":
+            return self._execute_trino(sql, params)
+        raise ValueError(f"unknown lane: {lane_id}")
 
-        host_port, _, rest = _trino_dsn().partition("/")
-        host, _, port = host_port.partition(":")
-        catalog, _, schema = rest.partition("/")
+    def _execute_trino(self, sql: str, params: list | None) -> list:
+        import trino  # optional dependency: pip install 'carina-platform[trino]'
+
+        host, port, catalog, schema = parse_trino_dsn(_trino_dsn())
         conn = trino.dbapi.connect(
-            host=host, port=int(port or 8080),
-            catalog=catalog or "iceberg", schema=schema or "carina",
+            host=host, port=port, catalog=catalog, schema=schema,
             user=os.environ.get("CARINA_TRINO_USER", "carina"),
         )
         cur = conn.cursor()
-        cur.execute(sql, params or None)
+        cur.execute(transpile_for("trino", sql), params or None)
         return cur.fetchall()
+
+
+def parse_trino_dsn(dsn: str) -> tuple[str, int, str, str]:
+    """host[:port][/catalog[/schema]] → (host, port, catalog, schema)."""
+    host_port, _, rest = dsn.partition("/")
+    host, _, port = host_port.partition(":")
+    catalog, _, schema = rest.partition("/")
+    return host, int(port or 8080), catalog or "iceberg", schema or "carina"
+
+
+def transpile_for(engine: str, sql: str) -> str:
+    """The semantic layer speaks DuckDB SQL; every other lane gets a SQLGlot
+    transpilation (KEEL scope). The conformance suite exists because this
+    step is the spine's biggest silent risk (ADR-0004)."""
+    if engine in ("duckdb", "duckdb-local"):
+        return sql
+    import sqlglot
+
+    return sqlglot.transpile(sql, read="duckdb", write=engine)[0]

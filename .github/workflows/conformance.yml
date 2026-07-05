@@ -1,0 +1,29 @@
+# Cross-Lane Conformance Suite — nightly (KEEL DoD: "conformance suite
+# running nightly"). Rebuilds the lakehouse from live CBS sources, then runs
+# the canonical corpus on every attached lane. On the hosted runner only
+# duckdb-local attaches, which still validates the corpus and the live
+# pipeline end to end; point CARINA_TRINO_DSN at a cluster (self-hosted
+# runner or tunnel) and the same job becomes the real cross-engine diff.
+name: conformance-nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e .[dev]
+      - name: Build the lakehouse from live sources
+        run: carina run
+      - name: Cross-lane conformance corpus
+        env:
+          CARINA_TRINO_DSN: ${{ vars.CARINA_TRINO_DSN }}
+        run: carina conformance

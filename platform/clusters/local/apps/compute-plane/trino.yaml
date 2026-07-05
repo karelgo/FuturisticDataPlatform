@@ -1,0 +1,47 @@
+# Trino — the scale-out lane behind the Lane Router (ADR-0004).
+# Chart 1.42.2 = Trino 480 (pinned). Reads the same Iceberg tables the
+# reference app publishes, through Lakekeeper's REST catalog with vended
+# credentials: the catalog is the border control, Trino never holds keys.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trino
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://trinodb.github.io/charts
+    chart: trino
+    targetRevision: 1.42.2
+    helm:
+      valuesObject:
+        server:
+          workers: 1               # local profile; prod scales via KEDA/HPA
+        coordinator:
+          resources:
+            requests: {cpu: 500m, memory: 2Gi}
+            limits: {cpu: "2", memory: 4Gi}
+        worker:
+          resources:
+            requests: {cpu: 500m, memory: 2Gi}
+            limits: {cpu: "2", memory: 4Gi}
+        catalogs:
+          iceberg: |
+            connector.name=iceberg
+            iceberg.catalog.type=rest
+            iceberg.rest-catalog.uri=http://lakekeeper.data-plane.svc.cluster.local:8181/catalog
+            iceberg.rest-catalog.warehouse=carina
+            iceberg.rest-catalog.vended-credentials-enabled=true
+            fs.native-s3.enabled=true
+            s3.endpoint=http://garage-s3.data-plane.svc.cluster.local:3900
+            s3.region=garage
+            s3.path-style-access=true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: compute-plane
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

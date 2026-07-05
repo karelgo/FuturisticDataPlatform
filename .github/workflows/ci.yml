@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install
-        run: pip install -e .[dev]
+        run: pip install -e .[dev,iceberg]
       - name: Install OPA (policy conformance suite)
         run: |
           curl -fsSL -o /usr/local/bin/opa \

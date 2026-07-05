@@ -31,6 +31,8 @@ carina lanes                                # compute-lane router state
 carina publish                              # export as Apache Iceberg tables, parity-verified
 carina catalog status                       # what the catalog (Lakekeeper or local) serves
 carina authz simulate silver_cao_wages --groups analysts@carina.local   # policy answers
+carina conformance                          # cross-lane corpus, cell-diffed per attached lane
+carina flight                               # Arrow Flight front door (metrics in, Arrow out)
 ```
 
 | | |
@@ -61,7 +63,8 @@ The dashboard's **prepared analysis** is computed from the data (deterministical
 | **Write–Audit–Publish** (ADR-0005) | Gold transforms stage in a `wap` schema, compiled audits gate the publish; red audits leave production untouched |
 | Evidence plane (ADR-0010) | Append-only SHA-256 hash chain over every ingest/transform/check/query; verified live in the UI |
 | Semantic layer as only path (ADR-0008) | `semantic/metrics.yaml` → compiled SQL with provenance; the UI never sends SQL |
-| **Lane routing v1** (ADR-0004) | A real router on every semantic query: `duckdb-local` + a `trino` seam (`CARINA_TRINO_DSN`), estimate-based escalation, full routing decision in provenance |
+| **Lane routing v1** (ADR-0004) | A real router on every semantic query: `duckdb-local` + a `trino` lane (`CARINA_TRINO_DSN`, SQL transpiled per lane by **SQLGlot**), estimate-based escalation, full routing decision in provenance; **Arrow Flight front door** serving metrics as Arrow tables with provenance in the schema metadata |
+| **Cross-Lane Conformance Suite v1** (ADR-0004) | Canonical dialect-drift corpus run on every attached lane, cell-diffed against the DuckDB baseline, evidence-logged, **nightly in CI** |
 | **Golden path, measured** | `carina create data-product` scaffold → first green run records `golden_path.ship`; **`wages-nl` shipped in 4.6 min** against the 60-min KEEL target |
 | **Migration parity gate** | `carina parity a b --key …` — row-level dual-run diffs with the 30-day green streak computed from the evidence chain |
 | **Iceberg warehouse + catalog seam** (ADR-0001/0002) | `carina publish` writes real Apache Iceberg tables (local SQL catalog, or **Lakekeeper** via `CARINA_CATALOG_URI`), contract metadata in table properties, every publish round-trip parity-verified |

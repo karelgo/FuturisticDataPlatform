@@ -12,7 +12,7 @@ import sys
 
 import duckdb
 
-from . import authz, catalog, config, evidence, ingest, lanes, parity, quality, scaffold, transform, warehouse
+from . import authz, catalog, config, conformance, evidence, ingest, lanes, parity, quality, scaffold, transform, warehouse
 from .compiler import (
     check_artifacts,
     check_policy_bundle as compiler_check_bundle,
@@ -260,9 +260,35 @@ def cmd_lanes(_args) -> int:
     return 0
 
 
+def cmd_conformance(_args) -> int:
+    con = _connect()
+    s = conformance.run_suite(con)
+    lane_note = " vs ".join(s["lanes"]) if s["comparing"] else \
+        f"{s['lanes'][0]} only — corpus validated; attach a second lane to compare"
+    print(f"→ cross-lane conformance: {s['queries']} queries on {lane_note}")
+    for q in s["detail"]:
+        mark = "✓" if q["green"] else "✗"
+        rows = ", ".join(f"{l}={v['rows']}" for l, v in q["lanes"].items())
+        print(f"   {mark} {q['id']}: {rows}")
+        for d in q["drift"]:
+            print(f"      DRIFT vs {d['lane']}: {d['rows_only_in_baseline']} rows "
+                  f"only in baseline, {d['rows_only_in_lane']} only in lane")
+        for e in q["errors"]:
+            print(f"      ERROR on {e['lane']}: {e['error']}")
+    print(f"→ suite: {'GREEN' if s['green'] else 'RED'}")
+    return 0 if s["green"] else 1
+
+
 def cmd_serve(args) -> int:
     import uvicorn
     uvicorn.run("carina.api:app", host=args.host, port=args.port, log_level="info")
+    return 0
+
+
+def cmd_flight(args) -> int:
+    from . import flight
+    config.ensure_dirs()
+    flight.serve(str(config.DB_PATH), host=args.host, port=args.port)
     return 0
 
 
@@ -312,9 +338,16 @@ def main() -> None:
 
     sub.add_parser("lanes", help="Show compute lanes and router state")
 
+    sub.add_parser("conformance",
+                   help="Run the cross-lane conformance corpus on all attached lanes")
+
     serve = sub.add_parser("serve", help="Serve the portal UI + API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8899)
+
+    flt = sub.add_parser("flight", help="Serve the Arrow Flight front door")
+    flt.add_argument("--host", default="127.0.0.1")
+    flt.add_argument("--port", type=int, default=8815)
 
     args = parser.parse_args()
     rc = {
@@ -322,6 +355,7 @@ def main() -> None:
         "run": cmd_run, "serve": cmd_serve, "compile": cmd_compile,
         "create": cmd_create, "parity": cmd_parity, "lanes": cmd_lanes,
         "publish": cmd_publish, "catalog": cmd_catalog, "authz": cmd_authz,
+        "flight": cmd_flight, "conformance": cmd_conformance,
     }[args.cmd](args)
     sys.exit(rc)
 
