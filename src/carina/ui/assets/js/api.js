@@ -26,6 +26,20 @@ export const api = {
     const url = `/api/metrics/${encodeURIComponent(metricId)}/query${q.toString() ? "?" + q : ""}`;
     return getJSON(url);
   },
+  opsComponents: () => getJSON("/api/ops/components"),
+  opsLogs: (component) =>
+    getJSON(`/api/ops/logs${component ? "?component=" + encodeURIComponent(component) : ""}`),
+  opsTraces: () => getJSON("/api/ops/traces"),
+  opsQuery: async (sql) => {
+    const resp = await fetch("/api/ops/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) throw new Error(typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail));
+    return body;
+  },
   /** cached product detail (used by trust drawer + chart footers) */
   async productCached(id) {
     if (!cache.has(id)) cache.set(id, await api.product(id));

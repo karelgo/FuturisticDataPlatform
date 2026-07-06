@@ -29,6 +29,15 @@ Tracking the [roadmap's Phase 1](roadmap.md#phase-1--keel-months-05-the-spine-an
 | **Conformance suite running nightly** | ✅ Armed: [nightly workflow](../.github/workflows/conformance.yml) rebuilds from live sources and runs the corpus; becomes cross-engine the moment a Trino DSN is configured |
 | **Tier-0 restore drill passed** | 🟡 Backup manifests (CNPG WAL archiving + nightly base backup, 30-day PITR) and the [monthly drill runbook](runbooks/tier0-restore-drill.md) with its RTO/RPO scorecard are committed; the pass itself needs the cluster |
 
+## What shipped in increment 6 (ops console)
+
+- **One pane for the whole platform** (`#/ops` in the portal): every component — lakehouse, evidence chain + anchors, each compute lane, catalog seam, warehouse, identity, policy, every product's WAP/checks state, conformance — reporting its **own live status**, grouped by plane
+- **SQL workbench**: an operator lane that is read-only *by construction* (sqlglot whitelist: single SELECT/DESCRIBE/SHOW only), row-capped, routed through the lane router, and **evidence-logged as `ops.query` with the operator's identity**. Consumers still never get SQL (ADR-0008); operators do, audited
+- **Logs pane**: structured in-process ring buffer (uvicorn + carina loggers), filterable per component — the laptop stand-in for ClickStack/HyperDX behind the same pane
+- **Traces pane**: one trace per API request with child spans for authz decisions, semantic compilation, and lane execution, rendered as a waterfall — the in-process stand-in wearing OTel's shape
+- **Operator guard**: under OIDC the `/api/ops/*` surface requires membership of `CARINA_OPS_GROUPS` (default `platform-team@carina.local`); denies are evidence-logged like every other policy decision
+- 18 new tests (105 passing + 4 CI-only)
+
 ## What shipped in increment 5 (enterprise hardening — implementation-plan §3)
 
 - **Release engineering**: tagging `v*` now produces a **multi-arch image on ghcr** with an SPDX **SBOM** (syft), a **trivy scan that blocks on CRITICALs**, **cosign keyless signing + SBOM attestation**, and the Helm chart published as an **OCI artifact** — clusters consume exactly what the workflow attested

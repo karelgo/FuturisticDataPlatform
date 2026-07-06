@@ -13,7 +13,7 @@ spec:
       valuesObject:
         image:
           repository: carina   # k3d-imported local image; see platform/README.md
-          tag: "0.6.0"
+          tag: "0.7.0"
   destination:
     server: https://kubernetes.default.svc
     namespace: experience-plane

@@ -34,6 +34,6 @@ spec:
   output:
     to:
       kind: ImageStreamTag
-      name: carina:0.6.0
+      name: carina:0.7.0
   triggers:
     - type: ConfigChange

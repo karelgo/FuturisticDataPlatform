@@ -1,7 +1,7 @@
 # GENERATED — do not edit. Rendered from charts/carina for the Developer
 # Sandbox (no helm needed there):
 #   helm template carina charts/carina -f charts/carina/values-openshift.yaml \
-#     --set image.repository=carina --set image.tag=0.6.0
+#     --set image.repository=carina --set image.tag=0.7.0
 # The bare image name resolves via the ImageStream lookupPolicy in build.yaml.
 ---
 # Source: carina/templates/pvc.yaml
@@ -12,7 +12,7 @@ metadata:
   labels:
     app.kubernetes.io/name: carina
     app.kubernetes.io/instance: carina
-    app.kubernetes.io/version: "0.6.0"
+    app.kubernetes.io/version: "0.7.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   accessModes: [ReadWriteOnce]
@@ -28,7 +28,7 @@ metadata:
   labels:
     app.kubernetes.io/name: carina
     app.kubernetes.io/instance: carina
-    app.kubernetes.io/version: "0.6.0"
+    app.kubernetes.io/version: "0.7.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   type: ClusterIP
@@ -48,7 +48,7 @@ metadata:
   labels:
     app.kubernetes.io/name: carina
     app.kubernetes.io/instance: carina
-    app.kubernetes.io/version: "0.6.0"
+    app.kubernetes.io/version: "0.7.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
@@ -68,7 +68,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: carina
-          image: "carina:0.6.0"
+          image: "carina:0.7.0"
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -116,7 +116,7 @@ metadata:
   labels:
     app.kubernetes.io/name: carina
     app.kubernetes.io/instance: carina
-    app.kubernetes.io/version: "0.6.0"
+    app.kubernetes.io/version: "0.7.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   to:

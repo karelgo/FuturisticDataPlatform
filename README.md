@@ -71,6 +71,7 @@ The dashboard's **prepared analysis** is computed from the data (deterministical
 | **Iceberg warehouse + catalog seam** (ADR-0001/0002) | `carina publish` writes real Apache Iceberg tables (local SQL catalog, or **Lakekeeper** via `CARINA_CATALOG_URI`), contract metadata in table properties, every publish round-trip parity-verified |
 | **Identity & policy fabric** (ADR-0009) | OIDC Bearer auth on the API (Keycloak JWKS; agents carry `carina_kind: agent`), contract-governed data path with evidence-logged denies, and a **Rego/Python policy conformance suite** — the generated OPA policy and the in-process enforcer must agree, verified in CI |
 | Experience plane | Portal, product page with lineage DAG, flagship dashboard, evidence explorer; light + dark; table-view twin on every chart |
+| **Ops console** (operations plane) | Every component's live status in one pane, an **evidence-logged read-only SQL workbench**, per-component logs, and request traces with span waterfalls — operator-group-gated under OIDC; ClickStack/OTel swap in behind the same panes on cluster |
 
 `src/carina/` is the platform (~2,000 lines of Python, 36 tests), `products/` holds two live products (`labour-market-nl`, `wages-nl`), `src/carina/ui/` is the portal (no build step; ECharts vendored). Phase 1 build status: [docs/keel-status.md](docs/keel-status.md).
 

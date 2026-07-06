@@ -6,14 +6,29 @@ import json
 import threading
 
 import duckdb
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, authz, config, evidence, insights, lanes, quality, semantic
+from . import auth, authz, config, evidence, insights, lanes, ops, quality, semantic
 from .contracts import load_products
 
 app = FastAPI(title="CARINA — laptop profile", version="0.1.0")
+ops.install_log_capture()
+
+
+@app.middleware("http")
+async def request_tracing(request: Request, call_next):
+    # Every API request becomes one trace; static assets stay out of the store.
+    if not request.url.path.startswith("/api/") or request.url.path.startswith("/api/ops/traces"):
+        return await call_next(request)
+    with ops.trace(f"{request.method} {request.url.path}",
+                   method=request.method, path=request.url.path) as t:
+        response = await call_next(request)
+        t["spans"][0]["attributes"]["status_code"] = response.status_code
+        if response.status_code >= 500:
+            t["spans"][0]["status"] = "error"
+    return response
 
 _lock = threading.Lock()
 _con: duckdb.DuckDBPyConnection | None = None
@@ -45,6 +60,55 @@ def get_actor(authorization: str | None = Header(default=None)) -> authz.Actor:
 @app.get("/api/whoami")
 def whoami(actor: authz.Actor = Depends(get_actor)):
     return {"actor": actor.as_dict(), "auth_mode": auth.mode()}
+
+
+def get_operator(actor: authz.Actor = Depends(get_actor)) -> authz.Actor:
+    """The ops console is for the people who run the platform: in oidc mode
+    membership of an operator group (CARINA_OPS_GROUPS) is required, and
+    denies are evidence-logged like every other policy decision."""
+    if auth.mode() != "none" and not set(actor.groups) & set(ops.ops_groups()):
+        with _lock:
+            evidence.record(con(), "authz.deny", "ops-console", {
+                "actor": actor.as_dict(), "required_any_of": ops.ops_groups(),
+            }, actor=actor.subject)
+        raise HTTPException(403, {"denied": "ops console requires an operator group",
+                                  "required_any_of": ops.ops_groups()})
+    return actor
+
+
+@app.get("/api/ops/components")
+def ops_components(actor: authz.Actor = Depends(get_operator)):
+    with _lock:
+        with ops.span("ops.components"):
+            return {"components": ops.components(con()), "as_of": None}
+
+
+@app.post("/api/ops/query")
+def ops_query(payload: dict = Body(...), actor: authz.Actor = Depends(get_operator)):
+    sql = (payload.get("sql") or "").strip()
+    if not sql:
+        raise HTTPException(400, "missing 'sql'")
+    with _lock:
+        try:
+            return ops.run_query(con(), sql, actor.subject)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except duckdb.Error as e:
+            raise HTTPException(400, f"{type(e).__name__}: {e}")
+
+
+@app.get("/api/ops/logs")
+def ops_logs(component: str | None = Query(default=None),
+             limit: int = Query(default=200, le=500),
+             actor: authz.Actor = Depends(get_operator)):
+    return {"logs": ops.recent_logs(component, limit),
+            "components": ops.log_components()}
+
+
+@app.get("/api/ops/traces")
+def ops_traces(limit: int = Query(default=50, le=200),
+               actor: authz.Actor = Depends(get_operator)):
+    return {"traces": ops.recent_traces(limit)}
 
 
 @app.get("/api/overview")
@@ -209,7 +273,8 @@ def metric_query(
         # evidence-logged (the laptop stand-in for OPA decision logs).
         model = models[metrics[metric_id].model]
         contracts = [ct for p in products for ct in p.contracts if ct.id in model.contracts]
-        allowed, decisions = authz.decide_all(contracts, actor, "read", con=c)
+        with ops.span("authz.decide", contracts=[ct.id for ct in contracts]):
+            allowed, decisions = authz.decide_all(contracts, actor, "read", con=c)
         if not allowed:
             denied = [d for d in decisions if not d.allow]
             raise HTTPException(403, {
@@ -217,8 +282,9 @@ def metric_query(
                 "hint": "access is contract-governed; see the product page",
             })
         try:
-            return semantic.query_metric(c, models, metrics, metric_id, dimension,
-                                         since, actor=actor.subject)
+            with ops.span("semantic.query", metric=metric_id):
+                return semantic.query_metric(c, models, metrics, metric_id, dimension,
+                                             since, actor=actor.subject)
         except KeyError as e:
             raise HTTPException(404, str(e))
 

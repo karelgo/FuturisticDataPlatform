@@ -7,6 +7,7 @@ import { renderPortal } from "./pages/portal.js";
 import { renderProduct } from "./pages/product.js";
 import { renderDashboard } from "./pages/dashboard.js";
 import { renderEvidence } from "./pages/evidence.js";
+import { renderOps } from "./pages/ops.js";
 
 const main = document.getElementById("main");
 
@@ -15,6 +16,7 @@ const routes = [
   { pattern: /^#\/product\/([\w-]+)$/, nav: "product", render: (root, m) => renderProduct(root, m[1]) },
   { pattern: /^#\/dashboard$/, nav: "dashboard", render: (root) => renderDashboard(root) },
   { pattern: /^#\/evidence$/, nav: "evidence", render: (root) => renderEvidence(root) },
+  { pattern: /^#\/ops$/, nav: "ops", render: (root) => renderOps(root) },
 ];
 
 async function route() {
