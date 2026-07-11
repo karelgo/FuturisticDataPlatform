@@ -1,0 +1,53 @@
+# Keycloak (Quarkus distribution via codecentric keycloakx) — the human and
+# agent IdP (ADR-0009). Chart 7.2.0 = Keycloak 26.6.2 (pinned).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://codecentric.github.io/helm-charts
+    chart: keycloakx
+    targetRevision: 7.2.0
+    helm:
+      valuesObject:
+        command:
+          - /opt/keycloak/bin/kc.sh
+          - start
+          - --http-enabled=true
+          - --hostname-strict=false
+          - --import-realm
+        extraEnv: |
+          - name: KC_BOOTSTRAP_ADMIN_USERNAME
+            value: admin
+          - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+            value: admin        # DEV ONLY — External Secrets in anything shared
+          - name: KC_PROXY_HEADERS
+            value: xforwarded
+        database:
+          vendor: postgres
+          hostname: keycloak-db-rw.trust-plane.svc.cluster.local
+          port: 5432
+          database: keycloak
+          username: keycloak
+          existingSecret: keycloak-db-app   # CNPG-generated; key "password"
+          existingSecretKey: password
+        extraVolumes: |
+          - name: realm
+            configMap:
+              name: keycloak-realm-carina
+        extraVolumeMounts: |
+          - name: realm
+            mountPath: /opt/keycloak/data/import
+            readOnly: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trust-plane
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

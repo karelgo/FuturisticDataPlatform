@@ -1,0 +1,59 @@
+# Cross-Lane Conformance Suite v1 — the canonical query corpus.
+#
+# Every query here runs on every attached lane and is diffed cell-by-cell
+# (ADR-0004: dialect drift is the spine's biggest silent risk). Queries are
+# written in DuckDB SQL — the semantic layer's dialect — and transpiled per
+# lane by SQLGlot, exactly like production queries. Rules for corpus entries:
+#   - deterministic: total ORDER BY, explicit round() on floating aggregates
+#   - each entry exercises a construct known to drift between engines
+queries:
+  - id: agg-avg-round
+    description: GROUP BY over doubles with explicit rounding
+    sql: >
+      SELECT year, round(avg(unemployment_rate), 6) AS v
+      FROM gold_labour_market_monthly GROUP BY year ORDER BY year
+
+  - id: date-trunc-quarter
+    description: date_trunc on quarter boundaries
+    sql: >
+      SELECT date_trunc('quarter', date) AS q, count(*) AS n
+      FROM gold_vacancies_by_sector GROUP BY 1 ORDER BY 1
+
+  - id: nullif-division
+    description: NULL-safe division (tension ratio recomputed)
+    sql: >
+      SELECT date, round(vacancies_unfilled / nullif(unemployed_avg, 0), 6) AS v
+      FROM gold_labour_tension ORDER BY date
+
+  - id: regexp-filter
+    description: regexp predicate (regexp_matches -> REGEXP_LIKE under transpile)
+    sql: >
+      SELECT sector_code, count(*) AS n FROM gold_vacancies_by_sector
+      WHERE regexp_matches(sector, '^[A-Z] ') GROUP BY sector_code ORDER BY sector_code
+
+  - id: window-lag
+    description: LAG window over a date ordering
+    sql: >
+      SELECT date, round(wage_index_hourly - lag(wage_index_hourly)
+        OVER (ORDER BY date), 6) AS delta
+      FROM gold_wages_monthly ORDER BY date
+
+  - id: case-bucketing
+    description: CASE expression buckets
+    sql: >
+      SELECT CASE WHEN participation_rate >= 70 THEN 'high'
+                  WHEN participation_rate >= 50 THEN 'mid'
+                  ELSE 'low' END AS bucket, count(*) AS n
+      FROM gold_participation_by_age GROUP BY 1 ORDER BY 1
+
+  - id: distinct-count
+    description: COUNT(DISTINCT) per group
+    sql: >
+      SELECT year, count(DISTINCT sector_code) AS n
+      FROM gold_employment_by_sector GROUP BY year ORDER BY year
+
+  - id: date-diff-months
+    description: date_diff over an aggregate range
+    sql: >
+      SELECT date_diff('month', min(date), max(date)) AS months
+      FROM gold_wages_monthly

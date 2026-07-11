@@ -17,6 +17,15 @@ tier: gold
 status: live
 tags: [labour-market, netherlands, cbs, open-data, flagship]
 
+# Gold audits — run against the staging schema before publish (Write-Audit-Publish).
+# Same check grammar as contract quality checks; compiled, never handwritten.
+audits:
+  - {table: gold_labour_market_monthly, type: not_null, columns: [date, unemployment_rate]}
+  - {table: gold_labour_market_monthly, type: unique, columns: [date]}
+  - {table: gold_labour_tension, type: min_rows, value: 80}
+  - {table: gold_labour_tension, type: range, column: tension_ratio, min: 0, max: 5}
+  - {table: gold_participation_by_age, type: not_null, columns: [age_group, participation_rate]}
+
 # Gold-table lineage (upstream tables per gold table) — drives the lineage graph.
 lineage:
   gold_labour_market_monthly: [silver_labour_monthly]

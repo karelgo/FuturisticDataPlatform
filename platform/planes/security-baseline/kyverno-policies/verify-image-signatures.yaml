@@ -1,0 +1,30 @@
+# Only images signed by this repository's release workflow may run as the
+# platform (implementation-plan §3.1: admission control rejects unsigned
+# images). Keyless cosign: the signature's identity IS the GitHub workflow.
+# failureAction starts as Audit — flip to Enforce after one green release
+# has been deployed through it.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-carina-image-signatures
+spec:
+  webhookConfiguration:
+    failurePolicy: Fail
+  rules:
+    - name: verify-carina-signature
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [experience-plane]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/karelgo/carina*"
+          failureAction: Audit   # → Enforce after burn-in
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/karelgo/FuturisticDataPlatform/.github/workflows/release.yml@refs/tags/*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev

@@ -1,0 +1,61 @@
+{{- range $name, $job := .Values.jobs }}
+{{- if $job.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "carina.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "carina.labels" $ | nindent 4 }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "carina.selectorLabels" $ | nindent 12 }}
+            app.kubernetes.io/component: {{ $name }}
+        spec:
+          restartPolicy: Never
+          securityContext:
+            {{- toYaml $.Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: {{ $name }}
+              image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              securityContext:
+                {{- toYaml $.Values.containerSecurityContext | nindent 16 }}
+              command:
+                {{- if eq $name "refresh" }}
+                ["carina", "run"]
+                {{- else if eq $name "anchor" }}
+                ["carina", "evidence", "anchor"]
+                {{- end }}
+              env:
+                - name: CARINA_ROOT
+                  value: /app
+                {{- with $.Values.extraEnv }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              volumeMounts:
+                - name: data
+                  mountPath: /app/data
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: data
+              {{- if $.Values.persistence.enabled }}
+              persistentVolumeClaim:
+                claimName: {{ include "carina.fullname" $ }}-data
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+            - name: tmp
+              emptyDir: {}
+{{- end }}
+{{- end }}

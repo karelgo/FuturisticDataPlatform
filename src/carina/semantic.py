@@ -17,6 +17,7 @@ import yaml
 
 from . import evidence
 from .contracts import Product
+from .lanes import LaneRouter
 
 
 @dataclass
@@ -72,15 +73,16 @@ def load_semantic(products: list[Product]) -> tuple[dict[str, SemanticModel], di
     return models, metrics
 
 
-def query_metric(
-    con: duckdb.DuckDBPyConnection,
+def compile_metric_sql(
     models: dict[str, SemanticModel],
     metrics: dict[str, Metric],
     metric_id: str,
     dimension: str | None = None,
     since: str | None = None,
-    actor: str = "portal.ui",
-) -> dict:
+) -> tuple[str, list, Metric, SemanticModel, str | None]:
+    """Compile a metric request into (sql, params, metric, model, dim_col).
+    Every consumption surface — REST, Flight, agents — compiles through here;
+    none of them accepts raw SQL (ADR-0008)."""
     if metric_id not in metrics:
         raise KeyError(f"Unknown metric: {metric_id}")
     metric = metrics[metric_id]
@@ -100,8 +102,24 @@ def query_metric(
         sql += f" WHERE {model.time_column} >= ?"
         params.append(since)
     sql += f" ORDER BY {model.time_column}" + (", dim" if dim_col else "")
+    return sql, params, metric, model, dim_col
 
-    rows = con.execute(sql, params).fetchall()
+
+def query_metric(
+    con: duckdb.DuckDBPyConnection,
+    models: dict[str, SemanticModel],
+    metrics: dict[str, Metric],
+    metric_id: str,
+    dimension: str | None = None,
+    since: str | None = None,
+    actor: str = "portal.ui",
+    router: LaneRouter | None = None,
+) -> dict:
+    sql, params, metric, model, dim_col = compile_metric_sql(
+        models, metrics, metric_id, dimension, since)
+
+    router = router or LaneRouter(con)
+    rows, decision = router.execute(sql, params, tables=[model.table])
 
     if dim_col:
         series: dict[str, list] = {}
@@ -113,6 +131,7 @@ def query_metric(
 
     evidence.record(con, "semantic.query", metric_id, {
         "dimension": dimension, "since": since, "rows": len(rows), "actor": actor,
+        "routing": decision.as_dict(),
     }, actor=actor)
 
     freshness = evidence.latest(con, "ingest.fetch_info")
@@ -128,7 +147,8 @@ def query_metric(
             "table": model.table,
             "sql": sql,
             "contracts": model.contracts,
-            "lane": "duckdb-local",
+            "lane": decision.lane,
+            "routing": decision.as_dict(),
             "evidence_head": evidence.head(con),
             "source_refreshed": (freshness or {}).get("ts"),
         },

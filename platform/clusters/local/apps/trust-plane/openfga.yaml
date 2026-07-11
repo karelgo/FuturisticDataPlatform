@@ -1,0 +1,45 @@
+# OpenFGA — relationship-based authorization for the catalog (Lakekeeper
+# integrates with it; ADR-0002/0009). Chart 0.3.10 = OpenFGA v1.18.1 (pinned).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openfga-db
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/karelgo/FuturisticDataPlatform
+    targetRevision: HEAD
+    path: platform/planes/trust-plane/openfga-db
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trust-plane
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openfga
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://openfga.github.io/helm-charts
+    chart: openfga
+    targetRevision: 0.3.10
+    helm:
+      valuesObject:
+        datastore:
+          engine: postgres
+          # CNPG's app secret carries a ready-made "uri" key.
+          uriSecret: openfga-db-app
+        migrate:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trust-plane
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]

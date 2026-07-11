@@ -6,14 +6,29 @@ import json
 import threading
 
 import duckdb
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, evidence, insights, quality, semantic
+from . import auth, authz, config, evidence, insights, lanes, ops, quality, semantic
 from .contracts import load_products
 
 app = FastAPI(title="CARINA — laptop profile", version="0.1.0")
+ops.install_log_capture()
+
+
+@app.middleware("http")
+async def request_tracing(request: Request, call_next):
+    # Every API request becomes one trace; static assets stay out of the store.
+    if not request.url.path.startswith("/api/") or request.url.path.startswith("/api/ops/traces"):
+        return await call_next(request)
+    with ops.trace(f"{request.method} {request.url.path}",
+                   method=request.method, path=request.url.path) as t:
+        response = await call_next(request)
+        t["spans"][0]["attributes"]["status_code"] = response.status_code
+        if response.status_code >= 500:
+            t["spans"][0]["status"] = "error"
+    return response
 
 _lock = threading.Lock()
 _con: duckdb.DuckDBPyConnection | None = None
@@ -32,6 +47,68 @@ def load_state():
     products = load_products()
     models, metrics = semantic.load_semantic(products)
     return products, models, metrics
+
+
+def get_actor(authorization: str | None = Header(default=None)) -> authz.Actor:
+    """One identity path for every caller — human, agent, or service."""
+    try:
+        return auth.actor_from_authorization(authorization)
+    except auth.AuthError as e:
+        raise HTTPException(401, str(e), headers={"WWW-Authenticate": "Bearer"})
+
+
+@app.get("/api/whoami")
+def whoami(actor: authz.Actor = Depends(get_actor)):
+    return {"actor": actor.as_dict(), "auth_mode": auth.mode()}
+
+
+def get_operator(actor: authz.Actor = Depends(get_actor)) -> authz.Actor:
+    """The ops console is for the people who run the platform: in oidc mode
+    membership of an operator group (CARINA_OPS_GROUPS) is required, and
+    denies are evidence-logged like every other policy decision."""
+    if auth.mode() != "none" and not set(actor.groups) & set(ops.ops_groups()):
+        with _lock:
+            evidence.record(con(), "authz.deny", "ops-console", {
+                "actor": actor.as_dict(), "required_any_of": ops.ops_groups(),
+            }, actor=actor.subject)
+        raise HTTPException(403, {"denied": "ops console requires an operator group",
+                                  "required_any_of": ops.ops_groups()})
+    return actor
+
+
+@app.get("/api/ops/components")
+def ops_components(actor: authz.Actor = Depends(get_operator)):
+    with _lock:
+        with ops.span("ops.components"):
+            return {"components": ops.components(con()), "as_of": None}
+
+
+@app.post("/api/ops/query")
+def ops_query(payload: dict = Body(...), actor: authz.Actor = Depends(get_operator)):
+    sql = (payload.get("sql") or "").strip()
+    if not sql:
+        raise HTTPException(400, "missing 'sql'")
+    with _lock:
+        try:
+            return ops.run_query(con(), sql, actor.subject)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except duckdb.Error as e:
+            raise HTTPException(400, f"{type(e).__name__}: {e}")
+
+
+@app.get("/api/ops/logs")
+def ops_logs(component: str | None = Query(default=None),
+             limit: int = Query(default=200, le=500),
+             actor: authz.Actor = Depends(get_operator)):
+    return {"logs": ops.recent_logs(component, limit),
+            "components": ops.log_components()}
+
+
+@app.get("/api/ops/traces")
+def ops_traces(limit: int = Query(default=50, le=200),
+               actor: authz.Actor = Depends(get_operator)):
+    return {"traces": ops.recent_traces(limit)}
 
 
 @app.get("/api/overview")
@@ -184,12 +261,30 @@ def metric_query(
     metric_id: str,
     dimension: str | None = Query(default=None),
     since: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    actor: authz.Actor = Depends(get_actor),
 ):
     with _lock:
         c = con()
-        _, models, metrics = load_state()
+        products, models, metrics = load_state()
+        if metric_id not in metrics:
+            raise HTTPException(404, f"Unknown metric: {metric_id}")
+        # Access to a metric is access to every contract behind its model —
+        # the policy compiled from those contracts decides, and denies are
+        # evidence-logged (the laptop stand-in for OPA decision logs).
+        model = models[metrics[metric_id].model]
+        contracts = [ct for p in products for ct in p.contracts if ct.id in model.contracts]
+        with ops.span("authz.decide", contracts=[ct.id for ct in contracts]):
+            allowed, decisions = authz.decide_all(contracts, actor, "read", con=c)
+        if not allowed:
+            denied = [d for d in decisions if not d.allow]
+            raise HTTPException(403, {
+                "denied": [d.as_dict() for d in denied],
+                "hint": "access is contract-governed; see the product page",
+            })
         try:
-            return semantic.query_metric(c, models, metrics, metric_id, dimension, since)
+            with ops.span("semantic.query", metric=metric_id):
+                return semantic.query_metric(c, models, metrics, metric_id, dimension,
+                                             since, actor=actor.subject)
         except KeyError as e:
             raise HTTPException(404, str(e))
 
@@ -236,6 +331,20 @@ def evidence_log(limit: int = Query(default=50, le=500), offset: int = 0, action
 def evidence_verify():
     with _lock:
         return evidence.verify(con())
+
+
+@app.get("/api/lanes")
+def lane_state():
+    with _lock:
+        router = lanes.LaneRouter(con())
+        return {
+            "escalate_threshold_rows": lanes.escalate_threshold(),
+            "lanes": [
+                {"id": lane.id, "engine": lane.engine, "attached": lane.attached,
+                 "description": lane.description}
+                for lane in router.lanes()
+            ],
+        }
 
 
 # ---- static UI -------------------------------------------------------------

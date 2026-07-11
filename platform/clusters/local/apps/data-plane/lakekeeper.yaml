@@ -1,0 +1,43 @@
+# Lakekeeper — the Iceberg REST catalog and the platform's control point
+# (ADR-0002): credential vending, authz, change events.
+# Chart 0.11.0 = Lakekeeper 0.12.2 (pinned).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: lakekeeper
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://lakekeeper.github.io/lakekeeper-charts
+    chart: lakekeeper
+    targetRevision: 0.11.0
+    helm:
+      valuesObject:
+        # The bundled Postgres is not production-shaped; CloudNativePG owns
+        # the database (see lakekeeper-db.yaml — Tier-0 backups included).
+        postgresql:
+          enabled: false
+        externalDatabase:
+          host_write: lakekeeper-db-rw.data-plane.svc.cluster.local
+          host_read: lakekeeper-db-ro.data-plane.svc.cluster.local
+          port: 5432
+          user: lakekeeper
+          database: lakekeeper
+          # CNPG generates this secret with the cluster (key: password).
+          passwordSecret: lakekeeper-db-app
+          passwordSecretKey: password
+        # OpenFGA arrives with the trust-plane increment; keep the catalog
+        # unauthorized-but-unreachable (ClusterIP only) until then.
+        internalOpenFGA: false
+        catalog:
+          config: {}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-plane
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -8,6 +8,8 @@ Four phases over ~24 months, each with a hard definition of done. The ODAP migra
 
 ## Phase 1 — KEEL (months 0–5): the spine and the golden path
 
+> **In progress** — the KEEL mechanisms are being built in the reference implementation first; the scope-by-scope tracker is [keel-status.md](keel-status.md).
+
 **Scope**
 - Rook-Ceph (prod) / Garage (dev); **Lakekeeper + CloudNativePG with Tier-0 DR from day one**; Apache Iceberg v3.
 - DuckDB + Trino lanes with a v1 Lane Router on the Flight SQL front door.

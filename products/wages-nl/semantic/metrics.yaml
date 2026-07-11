@@ -1,0 +1,45 @@
+# Semantic layer — the only consumption path. Metrics compile to SQL with provenance.
+models:
+  wages_monthly:
+    table: gold_wages_monthly
+    time: date
+    grain: monthly
+    contracts: [cbs-cao-wages]
+    dimensions: {}
+
+  wage_growth_by_sector:
+    table: gold_wage_growth_by_sector
+    time: date
+    grain: monthly
+    contracts: [cbs-cao-wages]
+    dimensions:
+      sector: cao_sector
+
+metrics:
+  wage_growth_yoy:
+    model: wages_monthly
+    expr: wage_growth_yoy
+    title: "CAO wage growth (year-on-year)"
+    description: >
+      Year-on-year change of hourly collectively negotiated wages including
+      special payments, all CAO sectors combined.
+    unit: "%"
+    good_direction: balance
+
+  wage_index_hourly:
+    model: wages_monthly
+    expr: wage_index_hourly
+    title: "Hourly CAO wage index"
+    description: "Hourly cao wages incl. special payments, index 2020 = 100."
+    unit: "2020=100"
+    good_direction: up
+
+  wage_growth_by_cao_sector:
+    model: wage_growth_by_sector
+    expr: wage_growth_yoy
+    title: "CAO wage growth by sector (year-on-year)"
+    description: >
+      Year-on-year CAO wage growth split by CAO sector: private companies,
+      subsidised corporations, and government.
+    unit: "%"
+    good_direction: balance

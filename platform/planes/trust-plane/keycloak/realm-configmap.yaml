@@ -1,0 +1,131 @@
+# The carina realm as code — Keycloak imports it at startup (--import-realm).
+# DEV shape: demo user + static agent secret + wildcard redirect, all called
+# out below; production replaces the user with IdP federation (SCIM/LDAP)
+# and the secrets with External Secrets.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-carina
+  namespace: trust-plane
+data:
+  carina-realm.json: |
+    {
+      "realm": "carina",
+      "enabled": true,
+      "groups": [
+        {"name": "platform-team@carina.local"},
+        {"name": "analysts@carina.local"}
+      ],
+      "users": [
+        {
+          "username": "dev",
+          "enabled": true,
+          "email": "dev@carina.local",
+          "emailVerified": true,
+          "credentials": [{"type": "password", "value": "dev", "temporary": false}],
+          "groups": ["/platform-team@carina.local"]
+        }
+      ],
+      "clients": [
+        {
+          "clientId": "carina-portal",
+          "name": "CARINA portal",
+          "publicClient": true,
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "redirectUris": ["*"],
+          "webOrigins": ["*"],
+          "protocolMappers": [
+            {
+              "name": "groups",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-group-membership-mapper",
+              "config": {
+                "claim.name": "groups",
+                "full.path": "false",
+                "access.token.claim": "true",
+                "id.token.claim": "true"
+              }
+            },
+            {
+              "name": "audience",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "config": {
+                "included.client.audience": "carina-portal",
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
+          "clientId": "carina-portal-proxy",
+          "name": "oauth2-proxy in front of the portal (browser SSO)",
+          "publicClient": false,
+          "standardFlowEnabled": true,
+          "secret": "dev-proxy-secret",
+          "redirectUris": ["*"],
+          "protocolMappers": [
+            {
+              "name": "groups",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-group-membership-mapper",
+              "config": {
+                "claim.name": "groups",
+                "full.path": "false",
+                "access.token.claim": "true",
+                "id.token.claim": "true"
+              }
+            },
+            {
+              "name": "audience",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "config": {
+                "included.client.audience": "carina-portal",
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
+          "clientId": "carina-analyst-agent",
+          "name": "Analyst agent (service account)",
+          "publicClient": false,
+          "serviceAccountsEnabled": true,
+          "standardFlowEnabled": false,
+          "secret": "dev-agent-secret",
+          "protocolMappers": [
+            {
+              "name": "agent-kind",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-hardcoded-claim-mapper",
+              "config": {
+                "claim.name": "carina_kind",
+                "claim.value": "agent",
+                "access.token.claim": "true"
+              }
+            },
+            {
+              "name": "groups",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-group-membership-mapper",
+              "config": {
+                "claim.name": "groups",
+                "full.path": "false",
+                "access.token.claim": "true"
+              }
+            },
+            {
+              "name": "audience",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "config": {
+                "included.client.audience": "carina-portal",
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        }
+      ]
+    }

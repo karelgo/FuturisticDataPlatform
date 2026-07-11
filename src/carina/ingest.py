@@ -2,7 +2,8 @@
 
 Bronze = raw API payloads landed as-is (JSON files + DuckDB tables).
 Silver = typed, renamed, period-parsed tables whose schema is declared in the
-contract. The silver DDL is *compiled* from the contract — never handwritten.
+contract. The silver DDL comes from the contract compiler — never handwritten,
+and byte-identical to the compiled artifact in products/*/compiled/.
 """
 
 from __future__ import annotations
@@ -10,25 +11,8 @@ from __future__ import annotations
 import duckdb
 
 from . import cbs, config, evidence
+from .compiler import bronze_table, compile_silver_sql
 from .contracts import Contract
-
-# Built-in period parsing: CBS period codes look like 2003JJ00 (year),
-# 1997KW01 (quarter), 2026MM05 (month).
-PERIOD_SQL = """
-    {periods_col} AS period_code,
-    substr({periods_col}, 5, 2) AS period_type,
-    CAST(substr({periods_col}, 1, 4) AS INTEGER) AS year,
-    CAST(substr({periods_col}, 7, 2) AS INTEGER) AS period_num,
-    CASE substr({periods_col}, 5, 2)
-        WHEN 'JJ' THEN make_date(CAST(substr({periods_col},1,4) AS INTEGER), 1, 1)
-        WHEN 'KW' THEN make_date(CAST(substr({periods_col},1,4) AS INTEGER), (CAST(substr({periods_col},7,2) AS INTEGER)-1)*3+1, 1)
-        WHEN 'MM' THEN make_date(CAST(substr({periods_col},1,4) AS INTEGER), CAST(substr({periods_col},7,2) AS INTEGER), 1)
-    END AS date
-"""
-
-
-def bronze_table(contract: Contract) -> str:
-    return f"bronze_{contract.source['table'].lower()}"
 
 
 def ingest_contract(con: duckdb.DuckDBPyConnection, contract: Contract, client) -> dict:
@@ -73,34 +57,13 @@ def ingest_contract(con: duckdb.DuckDBPyConnection, contract: Contract, client) 
         "bytes": nbytes, "requests": len(urls), "filter": src.get("filter"),
     })
 
-    # 4. Compile silver from the contract's declared columns
-    silver = contract.silver
-    cols_sql = [PERIOD_SQL.format(periods_col=silver.get("periods_column", "Periods"))]
-    for col in silver.get("columns", []):
-        if "from" in col:
-            expr = f'"{col["from"]}"'
-        else:
-            expr = col["expr"]
-        cols_sql.append(f'CAST({expr} AS {col.get("type", "VARCHAR")}) AS {col["name"]}')
-
-    joins = ""
-    for j in silver.get("dim_joins", []):
-        dim_table = f"bronze_{table_id.lower()}__{j['dimension'].lower()}"
-        joins += (
-            f' LEFT JOIN {dim_table} AS {j["alias"]} '
-            f'ON trim(b."{j["dimension"]}") = trim({j["alias"]}.Key)'
-        )
-
-    where = silver.get("where", "1=1")
+    # 4. Build silver from the compiled contract DDL
     stable = contract.silver_table
-    con.execute(
-        f"CREATE OR REPLACE TABLE {stable} AS "
-        f"SELECT {', '.join(cols_sql)} FROM {btable} b{joins} WHERE {where}"
-    )
+    con.execute(compile_silver_sql(contract))
     srows = con.execute(f"SELECT count(*) FROM {stable}").fetchone()[0]
     evidence.record(con, "ingest.build_silver", contract.id, {
         "silver_table": stable, "rows": srows,
-        "columns": [c["name"] for c in silver.get("columns", [])],
+        "columns": [c["name"] for c in contract.silver.get("columns", [])],
     })
 
     return {

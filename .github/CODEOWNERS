@@ -1,0 +1,12 @@
+# Default: everything needs the platform owner's review.
+* @karelgo
+
+# The trust surfaces: policy generation, enforcement, identity, evidence.
+/src/carina/compiler.py   @karelgo
+/src/carina/auth.py       @karelgo
+/src/carina/authz.py      @karelgo
+/src/carina/evidence.py   @karelgo
+/src/carina/anchoring.py  @karelgo
+/policies/                @karelgo
+/platform/                @karelgo
+/.github/workflows/       @karelgo

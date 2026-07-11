@@ -1,0 +1,44 @@
+# The plane namespaces, declared (not just auto-created) so Pod Security
+# Standards ride on them: restricted is enforced, violations are warned and
+# audited. The plane boundary is a security boundary (implementation-plan §2).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-plane
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+    carina.io/plane: data
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trust-plane
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+    carina.io/plane: trust
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: compute-plane
+  labels:
+    # Trino needs a baseline exception today (JVM + chart defaults);
+    # tighten to restricted once the chart's securityContext is validated.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+    carina.io/plane: compute
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: experience-plane
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+    carina.io/plane: experience

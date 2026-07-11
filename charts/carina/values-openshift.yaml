@@ -1,0 +1,17 @@
+# OpenShift overlay: the restricted-v2 SCC assigns the pod's UID and fsGroup
+# from the namespace's range — pinning them (as the vanilla-K8s defaults do)
+# makes admission fail. Null them out and let the SCC decide; the image is
+# group-0-writable so any assigned UID works. Everything else (non-root,
+# seccomp, read-only rootfs, dropped capabilities) stays.
+podSecurityContext:
+  runAsUser: null
+  fsGroup: null
+
+# Expose via an OpenShift Route (edge TLS) instead of an Ingress.
+route:
+  enabled: true
+
+# Keep the lakehouse across pod restarts (sandbox-friendly size).
+persistence:
+  enabled: true
+  size: 2Gi

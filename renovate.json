@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "description": "Keep the deliberately pinned stack from rotting: Python deps, GitHub Actions, base images, and the Helm chart pins inside Argo CD Applications.",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Group patch-level chart bumps; majors get their own PR and a human read of the changelog",
+      "matchManagers": ["argocd", "helm-values"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "chart patch updates"
+    }
+  ],
+  "argocd": {
+    "managerFilePatterns": ["/^platform/clusters/.+\\.yaml$/"]
+  },
+  "pep621": {
+    "enabled": true
+  }
+}

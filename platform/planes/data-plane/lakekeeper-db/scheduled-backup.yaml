@@ -1,0 +1,11 @@
+# Nightly base backup on top of continuous WAL archiving.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: lakekeeper-db-nightly
+  namespace: data-plane
+spec:
+  schedule: "0 0 2 * * *"           # 02:00 daily (CNPG 6-field cron)
+  backupOwnerReference: self
+  cluster:
+    name: lakekeeper-db

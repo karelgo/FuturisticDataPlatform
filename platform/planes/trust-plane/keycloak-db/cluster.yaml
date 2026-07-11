@@ -1,0 +1,42 @@
+# Tier-0: Keycloak's database (identity is a crown jewel too — governance §8).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: keycloak-db
+  namespace: trust-plane
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.5
+  primaryUpdateStrategy: unsupervised
+  bootstrap:
+    initdb:
+      database: keycloak
+      owner: keycloak
+  storage:
+    size: 2Gi
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://carina-backups/keycloak-db
+      endpointURL: http://garage-s3.data-plane.svc.cluster.local:3900
+      s3Credentials:
+        accessKeyId:
+          name: garage-credentials
+          key: access-key
+        secretAccessKey:
+          name: garage-credentials
+          key: secret-key
+      wal:
+        compression: gzip
+---
+# Garage credentials live in data-plane; CNPG needs them here as well.
+# DEV-ONLY copy of the static dev secret (see data-plane README).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: garage-credentials
+  namespace: trust-plane
+type: Opaque
+stringData:
+  access-key: "GK31c0dev0000000000000000"
+  secret-key: "9d3f6c1a4b8e2d7f0a5c3e9b1d4f7a2c6e8b0d3f5a7c9e1b4d6f8a0c2e5b7d9f"

@@ -1,0 +1,43 @@
+apiVersion: odcs/v3.1-carina
+id: cbs-cao-wages
+name: "Collectively negotiated (CAO) wages: monthly index and year-on-year growth"
+owner: platform-team@carina.local
+classification: public
+
+source:
+  type: cbs-odata
+  table: 85663ENG
+  url: https://opendata.cbs.nl/ODataApi/odata/85663ENG
+  landing_page: https://opendata.cbs.nl/statline/#/CBS/en/dataset/85663ENG
+  attribution: "CBS (Statistics Netherlands), Cao wages, contractual wage costs and working hours; index (2020=100)"
+  license: CC BY 4.0
+  # Current figures, all economic activities; the four CAO sectors stay as a dimension.
+  filter: "Version eq 'A045600   ' and SectorBranchesSIC2008 eq 'T001081'"
+  dimensions: [CaoSector]
+
+silver:
+  table: silver_cao_wages
+  where: "substr(Periods, 5, 2) = 'MM'"
+  dim_joins:
+    - {dimension: CaoSector, alias: cao}
+  columns:
+    - {name: cao_sector_code,     expr: "trim(b.CaoSector)", type: VARCHAR, description: "CAO sector code"}
+    - {name: cao_sector,          expr: "trim(cao.Title)",   type: VARCHAR, description: "CAO sector title (from CBS code list)"}
+    - {name: wage_index_monthly,  from: MonthlyCaoWagesInclSpecialPayments_2, type: DOUBLE, description: "Monthly cao wages incl. special payments, index", unit: "2020=100"}
+    - {name: wage_index_hourly,   from: HourlyCaoWagesInclSpecialPayments_4,  type: DOUBLE, description: "Hourly cao wages incl. special payments, index", unit: "2020=100"}
+    - {name: wage_growth_yoy,     from: HourlyCaoWagesInclSpecialPayments_11, type: DOUBLE, description: "Hourly cao wages incl. special payments, year-on-year change", unit: "%"}
+    - {name: wage_cost_growth_yoy, from: HourlyContractualWageCosts_13,       type: DOUBLE, description: "Hourly contractual wage costs, year-on-year change", unit: "%"}
+
+quality:
+  key: [date, cao_sector_code]
+  checks:
+    - {type: not_null, columns: [date, cao_sector_code]}
+    - {type: unique, columns: [date, cao_sector_code]}
+    - {type: min_rows, value: 300}   # monthly series starts 2020 (index base year), 4 sectors
+    - {type: range, column: wage_growth_yoy, min: -10, max: 20}
+    - {type: allowed_values, column: cao_sector_code, values: ["T001020", "10610", "10620", "10601"]}
+    - {type: freshness, column: date, max_lag_days: 92}
+
+refresh:
+  cadence: monthly
+  sla: "first estimate published in the month itself; figures final after ~3 months"

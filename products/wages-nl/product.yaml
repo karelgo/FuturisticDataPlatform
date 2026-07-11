@@ -1,0 +1,26 @@
+# ODPS-flavored data product descriptor — the marketplace entry compiles from this.
+id: wages-nl
+name: "Collectively Negotiated Wages (NL)"
+description: >
+  What collectively negotiated (CAO) pay is doing in the Netherlands: the
+  monthly wage index and its year-on-year growth, total and per CAO sector
+  (private, subsidised, government). The wage-side companion to the
+  labour-market product: tension pushed vacancies past unemployment in 2021,
+  and this product tracks how pay responded.
+owner: platform-team@carina.local
+tier: silver
+status: live
+created: "2026-07-04T17:58:19+00:00"
+tags: [wages, cao, labour-market, netherlands, cbs, open-data]
+
+# Gold audits — run against staging before publish (Write-Audit-Publish).
+audits:
+  - {table: gold_wages_monthly, type: not_null, columns: [date, wage_index_hourly]}
+  - {table: gold_wages_monthly, type: unique, columns: [date]}
+  - {table: gold_wage_growth_by_sector, type: min_rows, value: 150}
+  - {table: gold_wage_growth_by_sector, type: range, column: wage_growth_yoy, min: -10, max: 20}
+
+# Gold-table lineage (upstream tables per gold table) — drives the lineage graph.
+lineage:
+  gold_wages_monthly: [silver_cao_wages]
+  gold_wage_growth_by_sector: [silver_cao_wages]

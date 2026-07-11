@@ -1,0 +1,23 @@
+# App-of-apps: Argo CD reconciles every Application in this directory.
+# This is the only write path to the cluster (implementation-plan §2).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: carina-root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/karelgo/FuturisticDataPlatform
+    targetRevision: HEAD
+    path: platform/clusters/local/apps
+    directory:
+      recurse: true
+      exclude: root.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
